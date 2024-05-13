@@ -12,7 +12,10 @@ void setup()
     while (1)
       ;
   }
-  main_decode("/spiffs/encoded.wav", "/spiffs/output.txt");
+  unsigned long start = millis();
+  //main_decode("/spiffs/encoded.wav", "/spiffs/output.txt");
+  main_decode("/spiffs/encoded_8kHz.wav", "/spiffs/output.txt");
+  ESP_LOGI(TAG, "Decoding took %lu ms", millis() - start);
 }
 
 void loop()
