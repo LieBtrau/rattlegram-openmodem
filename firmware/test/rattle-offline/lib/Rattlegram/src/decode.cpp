@@ -42,10 +42,14 @@ template <typename value, typename cmplx, int rate>
 struct Decoder
 {
 	typedef int8_t code_type;
+
+//https://github.com/aicodix/modem/issues/9#issuecomment-1953722270
+//And then change the list SIZE to maybe four: typedef SIMD<code_type, SIZE> mesg_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
 #else
-	typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
+	//typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
+	typedef SIMD<code_type, 4 / sizeof(code_type)> mesg_type;
 #endif
 	typedef DSP::Const<value> Const;
 	static const int symbol_len = (1280 * rate) / 8000;
@@ -75,7 +79,11 @@ struct Decoder
 	SchmidlCox<value, cmplx, search_pos, symbol_len/2, guard_len> correlator;
 	CODE::CRC<uint16_t> crc0;
 	CODE::CRC<uint32_t> crc1;
-	CODE::OrderedStatisticsDecoder<255, 71, 4> osddec;
+
+	//You should probably play with the OSD ORDER first and set it to two: CODE::OrderedStatisticsDecoder<255, 71, ORDER> osddec;
+	//https://github.com/aicodix/modem/issues/9#issuecomment-1953722270
+	//CODE::OrderedStatisticsDecoder<255, 71, 4> osddec;
+	CODE::OrderedStatisticsDecoder<255, 71, 2> osddec;
 	CODE::PolarParityDecoder<mesg_type, code_max> polardec;
 	CODE::ReverseFisherYatesShuffle<4096> shuffle_4096;
 	CODE::ReverseFisherYatesShuffle<8192> shuffle_8192;
