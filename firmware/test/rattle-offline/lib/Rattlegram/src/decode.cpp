@@ -49,7 +49,7 @@ struct Decoder
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
 #else
 	//typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
-	typedef SIMD<code_type, 4 / sizeof(code_type)> mesg_type;
+	typedef SIMD<code_type, 1 / sizeof(code_type)> mesg_type;
 #endif
 	typedef DSP::Const<value> Const;
 	static const int symbol_len = (1280 * rate) / 8000;
