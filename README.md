@@ -7,9 +7,8 @@ radio modem and TNC over rattlegram packet radio
 Decoding a 1s mono 16-bit, 48kHz audio file took 37.2s.  After resampling that file to 8kHz, the decoding still took 34.2s.  
 Some suggestions for speeding up the decoding (see [github.com/aicodix/modem](https://github.com/aicodix/modem/issues/9)) dramatically improved the decoding time.  The 1s mono 16-bit, 48kHz audio file now decodes in 6.4s.
 
-| Device      | Audio File length | Sampling frequency [Hz] | Decoding Time [ms] |
+| Setup      | Audio File length | Audio data         | Decoding Time [ms] |
 | ----------- | ---------------- | ----------------------- | ------------------ |
-| ESP32-A1S   | 1.6s               | mono 16-bit, 8kHz       | 1476               |
-| ESP32-A1S, Espressif 6.0.1   | 1.6s               | mono 16-bit, 8kHz       | 1429               |
-
-As it takes longer to decode a signal than to receive it, full real-time operation is not possible.  However, it would be possible to buffer a packet that is strong enough to break the squelch and then decode it.  This would allow for a real-time operation with a delay of a few seconds.
+| ESP32-A1S, master-branch   | 1.6s             | mono 16-bit, 8kHz       | 1476               |
+| ESP32-A1S, Espressif 6.0.1, master-branch   | 1.6s             | mono 16-bit, 8kHz       | 1429               |
+| ESP32-A1S, Espressif 6.0.1, short-branch   | 1.2s             | mono 16-bit, 8kHz      | 806               |
