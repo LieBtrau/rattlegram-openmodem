@@ -10,7 +10,6 @@ Copyright 2021 Ahmet Inan <inan@aicodix.de>
 #include <cmath>
 #include "xorshift.hh"
 #include "complex.hh"
-#include "permute.hh"
 #include "utils.hh"
 #include "bitman.hh"
 #include "decibel.hh"
@@ -20,50 +19,43 @@ Copyright 2021 Ahmet Inan <inan@aicodix.de>
 #include "mls.hh"
 #include "crc.hh"
 #include "psk.hh"
-#include "qam.hh"
 #include "polar_tables.hh"
-#include "polar_parity_aided.hh"
+#include "polar_helper.hh"
+#include "polar_encoder.hh"
 #include "bose_chaudhuri_hocquenghem_encoder.hh"
 
 template <typename value, typename cmplx, int rate>
 struct Encoder
 {
 	typedef int8_t code_type;
+	static const int mod_bits = 2;
+	static const int code_order = 11;
+	static const int code_len = 1 << code_order;
 	static const int symbol_len = (1280 * rate) / 8000;
 	static const int guard_len = symbol_len / 8;
-	static const int bits_max = 16384;
-	static const int data_max = 1024;
-	static const int cols_max = 273 + 16;
+	static const int max_bits = 1360 + 32;
+	static const int cons_cols = 256;
+	static const int cons_rows = 4;
 	static const int mls0_len = 127;
 	static const int mls0_poly = 0b10001001;
 	static const int mls1_len = 255;
 	static const int mls1_poly = 0b100101011;
 	static const int mls2_poly = 0b100101010001;
 	DSP::WritePCM<value> *pcm;
-	DSP::FastFourierTransform<symbol_len, cmplx, -1> fwd;
 	DSP::FastFourierTransform<symbol_len, cmplx, 1> bwd;
+	DSP::FastFourierTransform<4*symbol_len, cmplx, -1> fwd4;
+	DSP::FastFourierTransform<4*symbol_len, cmplx, 1> bwd4;
 	CODE::CRC<uint16_t> crc0;
 	CODE::CRC<uint32_t> crc1;
 	CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bchenc;
-	CODE::PolarParityEncoder<code_type> polarenc;
-	CODE::FisherYatesShuffle<4096> shuffle_4096;
-	CODE::FisherYatesShuffle<8192> shuffle_8192;
-	CODE::FisherYatesShuffle<16384> shuffle_16384;
-	uint8_t input_data[data_max];
-	code_type code[bits_max], mesg[bits_max];
-	cmplx fdom[symbol_len];
-	cmplx tdom[symbol_len];
+	CODE::PolarSysEnc<code_type> polarenc;
+	code_type code[code_len], mesg[max_bits];
+	cmplx fdom[symbol_len], fdom4[4*symbol_len];
+	cmplx tdom[symbol_len], tdom4[4*symbol_len];
 	cmplx temp[symbol_len];
-	cmplx kern[symbol_len];
 	cmplx guard[guard_len];
-	cmplx prev[cols_max];
-	value papr_min, papr_max;
-	int mod_bits;
-	int oper_mode;
-	int code_order;
+	cmplx papr_min, papr_max;
 	int code_off;
-	int cons_cols;
-	int cons_rows;
 	int mls0_off;
 	int mls1_off;
 
@@ -71,59 +63,44 @@ struct Encoder
 	{
 		return (carrier + symbol_len) % symbol_len;
 	}
+	static int bin4(int carrier)
+	{
+		return (carrier + 4*symbol_len) % (4*symbol_len);
+	}
 	static int nrz(bool bit)
 	{
 		return 1 - 2 * bit;
 	}
-	void clipping_and_filtering(value scale, bool limit)
+	void improve_papr()
 	{
-		for (int i = 0; i < symbol_len; ++i) {
-			value pwr = norm(tdom[i]);
-			if (pwr > value(1))
-				tdom[i] /= sqrt(pwr);
+		for (int i = 0; i < 4*symbol_len; ++i)
+			fdom4[i] = 0;
+		for (int i = -symbol_len/2; i < symbol_len/2; ++i)
+			fdom4[bin4(i)] = fdom[bin(i)];
+		bwd4(tdom4, fdom4);
+		for (int i = 0; i < 4*symbol_len; ++i)
+			tdom4[i] /= std::sqrt(value(4*symbol_len));
+		for (int i = 0; i < 4*symbol_len; ++i) {
+			value amp = std::max(std::abs(tdom4[i].real()), std::abs(tdom4[i].imag()));
+			if (amp > value(1))
+				tdom4[i] /= amp;
 		}
-		fwd(temp, tdom);
-		for (int i = 0; i < symbol_len; ++i) {
-			if (norm(fdom[i])) {
-				temp[i] *= scale / std::sqrt(value(symbol_len));
-				cmplx err = temp[i] - fdom[i];
-				value mag = abs(err);
-				value lim = 0.1 * mod_distance();
-				if (limit && mag > lim)
-					temp[i] -= ((mag - lim) / mag) * err;
-			} else {
-				temp[i] = 0;
-			}
-		}
-		bwd(tdom, temp);
-		for (int i = 0; i < symbol_len; ++i)
-			tdom[i] /= scale * std::sqrt(value(symbol_len));
-	}
-	void tone_reservation()
-	{
-		for (int n = 0; n < 100; ++n) {
-			int peak = 0;
-			for (int i = 1; i < symbol_len; ++i)
-				if (norm(tdom[peak]) < norm(tdom[i]))
-					peak = i;
-			cmplx orig = tdom[peak];
-			if (norm(orig) <= value(1))
-				break;
-			for (int i = 0; i < symbol_len; ++i)
-				tdom[i] -= orig * kern[(symbol_len-peak+i)%symbol_len];
-		}
+		fwd4(fdom4, tdom4);
+		for (int i = -symbol_len/2; i < symbol_len/2; ++i)
+			if (norm(temp[bin(i)]))
+				temp[bin(i)] = fdom4[bin4(i)] / std::sqrt(value(4*symbol_len));
+			else
+				temp[bin(i)] = 0;
 	}
 	void symbol(bool papr_reduction = true)
 	{
-		bwd(tdom, fdom);
-		value scale = 2;
 		for (int i = 0; i < symbol_len; ++i)
-			tdom[i] /= scale * std::sqrt(value(symbol_len));
-		clipping_and_filtering(scale, oper_mode > 25 && papr_reduction);
-		if (oper_mode > 25 && papr_reduction)
-			tone_reservation();
+			temp[i] = fdom[i];
+		if (papr_reduction)
+			improve_papr();
+		bwd(tdom, temp);
 		for (int i = 0; i < symbol_len; ++i)
-			tdom[i] = cmplx(std::min(value(1), tdom[i].real()), std::min(value(1), tdom[i].imag()));
+			tdom[i] /= std::sqrt(value(8*symbol_len));
 		for (int i = 0; i < guard_len; ++i) {
 			value x = value(i) / value(guard_len - 1);
 			value ratio(0.5);
@@ -131,17 +108,17 @@ struct Encoder
 			x = value(0.5) * (value(1) - std::cos(DSP::Const<value>::Pi() * x));
 			guard[i] = DSP::lerp(guard[i], tdom[i+symbol_len-guard_len], x);
 		}
-		value peak = 0, mean = 0;
+		cmplx peak, mean;
 		for (int i = 0; i < symbol_len; ++i) {
-			value power(norm(tdom[i]));
-			peak = std::max(peak, power);
+			cmplx power(tdom[i].real() * tdom[i].real(), tdom[i].imag() * tdom[i].imag());
+			peak = cmplx(std::max(peak.real(), power.real()), std::max(peak.imag(), power.imag()));
 			mean += power;
 		}
-		mean /= symbol_len;
-		if (mean > 0) {
-			value papr(peak / mean);
-			papr_min = std::min(papr_min, papr);
-			papr_max = std::max(papr_max, papr);
+		if (mean.real() > 0 && mean.imag() > 0) {
+			cmplx papr(peak.real() / mean.real(), peak.imag() / mean.imag());
+			papr *= value(symbol_len);
+			papr_min = cmplx(std::min(papr_min.real(), papr.real()), std::min(papr_min.imag(), papr.imag()));
+			papr_max = cmplx(std::max(papr_max.real(), papr.real()), std::max(papr_max.imag(), papr.imag()));
 		}
 		pcm->write(reinterpret_cast<value *>(guard), guard_len, 2);
 		pcm->write(reinterpret_cast<value *>(tdom), symbol_len, 2);
@@ -181,11 +158,11 @@ struct Encoder
 		for (int i = 0; i < 16; ++i)
 			CODE::set_be_bit(data, i+55, (cs>>i)&1);
 		bchenc(data, parity);
-		CODE::MLS seq1(mls1_poly);
-		value cons_fac = std::sqrt(value(symbol_len) / value(cons_cols));
+		CODE::MLS seq4(mls1_poly);
+		value mls1_fac = std::sqrt(value(symbol_len) / value(mls1_len));
 		for (int i = 0; i < symbol_len; ++i)
 			fdom[i] = 0;
-		fdom[bin(mls1_off-1)] = cons_fac;
+		fdom[bin(mls1_off-1)] = mls1_fac;
 		for (int i = 0; i < 71; ++i)
 			fdom[bin(i+mls1_off)] = nrz(CODE::get_be_bit(data, i));
 		for (int i = 71; i < mls1_len; ++i)
@@ -193,250 +170,70 @@ struct Encoder
 		for (int i = 0; i < mls1_len; ++i)
 			fdom[bin(i+mls1_off)] *= fdom[bin(i-1+mls1_off)];
 		for (int i = 0; i < mls1_len; ++i)
-			fdom[bin(i+mls1_off)] *= nrz(seq1());
-		if (oper_mode > 25) {
-			for (int i = code_off; i < code_off + cons_cols; ++i) {
-				if (i == mls1_off-1)
-					i += mls1_len + 1;
-				fdom[bin(i)] = cons_fac * nrz(seq1());
-			}
-		}
+			fdom[bin(i+mls1_off)] *= nrz(seq4());
 		symbol();
 	}
 	cmplx mod_map(code_type *b)
 	{
-		switch (mod_bits) {
-		case 2:
-			return PhaseShiftKeying<4, cmplx, code_type>::map(b);
-		case 4:
-			return QuadratureAmplitudeModulation<16, cmplx, code_type>::map(b);
-		case 6:
-			return QuadratureAmplitudeModulation<64, cmplx, code_type>::map(b);
-		}
-		return 0;
+		return PhaseShiftKeying<4, cmplx, code_type>::map(b);
 	}
-	value mod_distance()
-	{
-		switch (mod_bits) {
-		case 2:
-			return PhaseShiftKeying<4, cmplx, code_type>::DIST;
-		case 4:
-			return QuadratureAmplitudeModulation<16, cmplx, code_type>::DIST;
-		case 6:
-			return QuadratureAmplitudeModulation<64, cmplx, code_type>::DIST;
-		}
-		return 2;
-	}
-	void shuffle(code_type *c)
-	{
-		switch (code_order) {
-		case 12:
-			shuffle_4096(c);
-			break;
-		case 13:
-			shuffle_8192(c);
-			break;
-		case 14:
-			shuffle_16384(c);
-			break;
-		}
-	}
-	Encoder(DSP::WritePCM<value> *pcm, const char *const *input_names, int input_count, int freq_off, uint64_t call_sign, int oper_mode) :
+	Encoder(DSP::WritePCM<value> *pcm, const uint8_t *inp, int freq_off, uint64_t call_sign, int oper_mode) :
 		pcm(pcm), crc0(0xA8F4), crc1(0x8F6E37A0), bchenc({
 			0b100011101, 0b101110111, 0b111110011, 0b101101001,
 			0b110111101, 0b111100111, 0b100101011, 0b111010111,
 			0b000010011, 0b101100101, 0b110001011, 0b101100011,
 			0b100011011, 0b100111111, 0b110001101, 0b100101101,
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
-			0b110101001, 0b000011111, 0b110000111, 0b110110001}),
-			oper_mode(oper_mode)
+			0b110101001, 0b000011111, 0b110000111, 0b110110001})
 	{
-		const uint32_t *frozen_bits = nullptr;
-		int parity_stride = 0;
-		int first_parity = 0;
-		int code_cols = 0;
-		int comb_cols = 0;
-		int comb_dist = 1;
-		int comb_off = 1;
-		int data_bits = 0;
-		int reserved_tones = 0;
-		switch (oper_mode) {
-		case 0:
-			code_cols = 256;
-			break;
-		case 23:
-			mod_bits = 2;
-			cons_rows = 8;
-			comb_cols = 0;
-			code_order = 12;
-			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
-			reserved_tones = 0;
-			break;
-		case 24:
-			mod_bits = 2;
-			cons_rows = 16;
-			comb_cols = 0;
-			code_order = 13;
-			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
-			reserved_tones = 0;
-			break;
-		case 25:
-			mod_bits = 2;
-			cons_rows = 32;
-			comb_cols = 0;
-			code_order = 14;
-			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
-			reserved_tones = 0;
-			break;
-		case 26:
-			mod_bits = 4;
-			cons_rows = 4;
-			comb_cols = 8;
-			code_order = 12;
-			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
-			reserved_tones = 8;
-			break;
-		case 27:
-			mod_bits = 4;
-			cons_rows = 8;
-			comb_cols = 8;
-			code_order = 13;
-			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
-			reserved_tones = 8;
-			break;
-		case 28:
-			mod_bits = 4;
-			cons_rows = 16;
-			comb_cols = 8;
-			code_order = 14;
-			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
-			reserved_tones = 8;
-			break;
-		case 29:
-			mod_bits = 6;
-			cons_rows = 5;
-			comb_cols = 16;
-			code_order = 13;
-			code_cols = 273;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
-			reserved_tones = 15;
-			break;
-		case 30:
-			mod_bits = 6;
-			cons_rows = 10;
-			comb_cols = 16;
-			code_order = 14;
-			code_cols = 273;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
-			reserved_tones = 15;
-			break;
-		default:
-			return;
-		}
-		int data_bytes = data_bits / 8;
 		int offset = (freq_off * symbol_len) / rate;
+		code_off = offset - cons_cols / 2;
 		mls0_off = offset - mls0_len + 1;
 		mls1_off = offset - mls1_len / 2;
-		cons_cols = code_cols + comb_cols;
-		code_off = offset - cons_cols / 2;
-		if (oper_mode > 0) {
-			comb_dist = comb_cols ? cons_cols / comb_cols : 1;
-			comb_off = comb_cols ? comb_dist / 2 : 1;
-			if (reserved_tones) {
-				value kern_fac = 1 / value(10 * reserved_tones);
-				for (int i = 0, j = code_off - reserved_tones / 2; i < reserved_tones; ++i, ++j) {
-					if (j == code_off)
-						j += cons_cols;
-					fdom[bin(j)] = kern_fac;
-				}
-				bwd(kern, fdom);
-			}
-		}
-		papr_min = 1000, papr_max = -1000;
+		papr_min = cmplx(1000, 1000), papr_max = cmplx(-1000, -1000);
 		pilot_block();
-		if (!oper_mode) {
-			schmidl_cox();
-			meta_data(call_sign << 8);
-		}
-		for (int input_index = 0; input_index < input_count; ++input_index) {
-			const char *input_name = input_names[input_index];
-			if (input_count == 1 && input_name[0] == '-' && input_name[1] == 0)
-				input_name = "/dev/stdin";
-			std::ifstream input_file(input_name, std::ios::binary);
-			if (input_file.bad()) {
-				std::cerr << "Couldn't open file \"" << input_name << "\" for reading." << std::endl;
-				continue;
+		schmidl_cox();
+		meta_data((call_sign << 8) | oper_mode);
+		if (oper_mode > 0) {
+			const uint32_t *frozen_bits = nullptr;
+			int data_bits = 0;
+			switch (oper_mode) {
+			case 14:
+				data_bits = 1360;
+				frozen_bits = frozen_2048_1392;
+				break;
+			case 15:
+				data_bits = 1024;
+				frozen_bits = frozen_2048_1056;
+				break;
+			case 16:
+				data_bits = 680;
+				frozen_bits = frozen_2048_712;
+				break;
+			default:
+				return;
 			}
-			for (int i = 0; i < data_bytes; ++i)
-				input_data[i] = std::max(input_file.get(), 0);
-			CODE::Xorshift32 scrambler;
-			for (int i = 0; i < data_bytes; ++i)
-				input_data[i] ^= scrambler();
-			schmidl_cox();
-			meta_data((call_sign << 8) | oper_mode);
 			for (int i = 0; i < data_bits; ++i)
-				mesg[i] = nrz(CODE::get_le_bit(input_data, i));
+				mesg[i] = nrz(CODE::get_le_bit(inp, i));
 			crc1.reset();
-			for (int i = 0; i < data_bytes; ++i)
-				crc1(input_data[i]);
+			for (int i = 0; i < data_bits / 8; ++i)
+				crc1(inp[i]);
 			for (int i = 0; i < 32; ++i)
 				mesg[i+data_bits] = nrz((crc1()>>i)&1);
-			polarenc(code, mesg, frozen_bits, code_order, parity_stride, first_parity);
-			shuffle(code);
-			for (int i = 0; i < cons_cols; ++i)
-				prev[i] = fdom[bin(i+code_off)];
-			CODE::MLS seq0(mls0_poly);
-			for (int j = 0, k = 0; j < cons_rows; ++j) {
-				for (int i = 0; i < cons_cols; ++i) {
-					if (oper_mode < 26) {
-						prev[i] *= mod_map(code+k);
-						fdom[bin(i+code_off)] = prev[i];
-						k += mod_bits;
-					} else if (i % comb_dist == comb_off) {
-						prev[i] *= nrz(seq0());
-						fdom[bin(i+code_off)] = prev[i];
-					} else {
-						fdom[bin(i+code_off)] = prev[i] * mod_map(code+k);
-						k += mod_bits;
-					}
-				}
+			polarenc(code, mesg, frozen_bits, code_order);
+			for (int j = 0; j < cons_rows; ++j) {
+				for (int i = 0; i < cons_cols; ++i)
+					fdom[bin(i+code_off)] *=
+						mod_map(code+mod_bits*(cons_cols*j+i));
 				symbol();
 			}
 		}
 		for (int i = 0; i < symbol_len; ++i)
 			fdom[i] = 0;
 		symbol();
-		std::cerr << "PAPR: " << DSP::decibel(papr_min) << " .. " << DSP::decibel(papr_max) << " dB" << std::endl;
+		std::cerr << "real PAPR: " << DSP::decibel(papr_min.real()) << " .. " << DSP::decibel(papr_max.real()) << " dB" << std::endl;
+		if (pcm->channels() == 2)
+			std::cerr << "imag PAPR: " << DSP::decibel(papr_min.imag()) << " .. " << DSP::decibel(papr_max.imag()) << " dB" << std::endl;
 	}
 };
 
@@ -459,8 +256,8 @@ long long int base37_encoder(const char *str)
 
 int main_encode(int argc, char **argv)
 {
-	if (argc < 8) {
-		std::cerr << "usage: " << argv[0] << " OUTPUT RATE BITS CHANNELS OFFSET MODE CALLSIGN INPUT.." << std::endl;
+	if (argc < 6 || argc > 8) {
+		std::cerr << "usage: " << argv[0] << " OUTPUT RATE BITS CHANNELS INPUT [OFFSET] [CALLSIGN]" << std::endl;
 		return 1;
 	}
 
@@ -470,83 +267,82 @@ int main_encode(int argc, char **argv)
 	int output_rate = std::atoi(argv[2]);
 	int output_bits = std::atoi(argv[3]);
 	int output_chan = std::atoi(argv[4]);
+	const char *input_name = argv[5];
+	if (input_name[0] == '-' && input_name[1] == 0)
+		input_name = "/dev/stdin";
 
-	int freq_off = std::atoi(argv[5]);
-	if (freq_off % 50) {
-		std::cerr << "Frequency offset must be divisible by 50." << std::endl;
-		return 1;
-	}
-	int input_count = argc - 8;
-	int oper_mode = std::atoi(argv[6]);
-	if (!oper_mode != !input_count) {
-		std::cerr << "Using operation mode " << oper_mode << " but " << input_count << " input file" << (input_count == 1 ? "" : "s") << " provided." << std::endl;
-		return 1;
-	}
-	long long int call_sign = base37_encoder(argv[7]);
+	int freq_off = output_chan == 1 ? 1500 : 0;
+	if (argc >= 7)
+		freq_off = std::atoi(argv[6]);
+
+	long long int call_sign = base37_encoder("ANONYMOUS");
+	if (argc >= 8)
+		call_sign = base37_encoder(argv[7]);
+
 	if (call_sign <= 0 || call_sign >= 129961739795077L) {
 		std::cerr << "Unsupported call sign." << std::endl;
 		return 1;
 	}
 
-	int band_width;
-	switch (oper_mode) {
-	case 0:
-		band_width = 1600;
-		break;
-	case 23:
-		band_width = 1600;
-		break;
-	case 24:
-		band_width = 1600;
-		break;
-	case 25:
-		band_width = 1600;
-		break;
-	case 26:
-		band_width = 1700;
-		break;
-	case 27:
-		band_width = 1700;
-		break;
-	case 28:
-		band_width = 1700;
-		break;
-	case 29:
-		band_width = 1900;
-		break;
-	case 30:
-		band_width = 1900;
-		break;
-	default:
-		std::cerr << "Unsupported operation mode." << std::endl;
-		return 1;
-	}
+	const int band_width = 1600;
+
 	if ((output_chan == 1 && freq_off < band_width / 2) || freq_off < band_width / 2 - output_rate / 2 || freq_off > output_rate / 2 - band_width / 2) {
 		std::cerr << "Unsupported frequency offset." << std::endl;
 		return 1;
 	}
+
+	if (freq_off % 50) {
+		std::cerr << "Frequency offset must be divisible by 50." << std::endl;
+		return 1;
+	}
+
 	typedef float value;
 	typedef DSP::Complex<value> cmplx;
+
+	std::ifstream input_file(input_name, std::ios::binary);
+	if (input_file.bad()) {
+		std::cerr << "Couldn't open file \"" << input_name << "\" for reading." << std::endl;
+		return 1;
+	}
+	const int data_len = 1360 / 8;
+	uint8_t *input_data = new uint8_t[data_len];
+	for (int i = 0; i < data_len; ++i)
+		input_data[i] = std::max(input_file.get(), 0);
+	int oper_mode = 0;
+	for (int i = 128; i < 170; ++i)
+		if (!oper_mode && input_data[i])
+			oper_mode = 14;
+	for (int i = 85; i < 128; ++i)
+		if (!oper_mode && input_data[i])
+			oper_mode = 15;
+	for (int i = 0; i < 85; ++i)
+		if (!oper_mode && input_data[i])
+			oper_mode = 16;
+	CODE::Xorshift32 scrambler;
+	for (int i = 0; i < data_len; ++i)
+		input_data[i] ^= scrambler();
+
 	DSP::WriteWAV<value> output_file(output_name, output_rate, output_bits, output_chan);
 	output_file.silence(output_rate);
 	switch (output_rate) {
 	case 8000:
-		delete new Encoder<value, cmplx, 8000>(&output_file, argv+8, input_count, freq_off, call_sign, oper_mode);
+		delete new Encoder<value, cmplx, 8000>(&output_file, input_data, freq_off, call_sign, oper_mode);
 		break;
 	case 16000:
-		delete new Encoder<value, cmplx, 16000>(&output_file, argv+8, input_count, freq_off, call_sign, oper_mode);
+		delete new Encoder<value, cmplx, 16000>(&output_file, input_data, freq_off, call_sign, oper_mode);
 		break;
 	case 44100:
-		delete new Encoder<value, cmplx, 44100>(&output_file, argv+8, input_count, freq_off, call_sign, oper_mode);
+		delete new Encoder<value, cmplx, 44100>(&output_file, input_data, freq_off, call_sign, oper_mode);
 		break;
 	case 48000:
-		delete new Encoder<value, cmplx, 48000>(&output_file, argv+8, input_count, freq_off, call_sign, oper_mode);
+		delete new Encoder<value, cmplx, 48000>(&output_file, input_data, freq_off, call_sign, oper_mode);
 		break;
 	default:
 		std::cerr << "Unsupported sample rate." << std::endl;
 		return 1;
 	}
 	output_file.silence(output_rate);
+	delete []input_data;
 
 	return 0;
 }

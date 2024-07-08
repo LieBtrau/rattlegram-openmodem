@@ -14,7 +14,7 @@ void setup()
   }
   unsigned long start = millis();
   //main_decode("/spiffs/encoded.wav", "/spiffs/output.txt");
-  main_decode("/spiffs/encoded_8kHz_no_silence.wav", "/spiffs/output.txt");
+  main_decode("/spiffs/encoded.wav", "/spiffs/output.txt");
   ESP_LOGI(TAG, "Decoding took %lu ms", millis() - start);
 }
 

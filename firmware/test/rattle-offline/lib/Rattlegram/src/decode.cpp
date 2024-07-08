@@ -14,7 +14,6 @@ namespace DSP { using std::abs; using std::min; using std::cos; using std::sin; 
 #include "theil_sen.hh"
 #include "xorshift.hh"
 #include "complex.hh"
-#include "permute.hh"
 #include "decibel.hh"
 #include "blockdc.hh"
 #include "hilbert.hh"
@@ -28,9 +27,10 @@ namespace DSP { using std::abs; using std::min; using std::cos; using std::sin; 
 #include "crc.hh"
 #include "osd.hh"
 #include "psk.hh"
-#include "qam.hh"
 #include "polar_tables.hh"
-#include "polar_parity_aided.hh"
+#include "polar_helper.hh"
+#include "polar_encoder.hh"
+#include "polar_list_decoder.hh"
 
 void base37_decoder(char *str, long long int val, int len)
 {
@@ -42,63 +42,51 @@ template <typename value, typename cmplx, int rate>
 struct Decoder
 {
 	typedef int8_t code_type;
-
-//https://github.com/aicodix/modem/issues/9#issuecomment-1953722270
-//And then change the list SIZE to maybe four: typedef SIMD<code_type, SIZE> mesg_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
 #else
-	//typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
-	typedef SIMD<code_type, 1 / sizeof(code_type)> mesg_type;
+	typedef SIMD<code_type, 1 / sizeof(code_type)> mesg_type;//reduced from 16 to 1
 #endif
 	typedef DSP::Const<value> Const;
+	static const int code_order = 11;
+	static const int mod_bits = 2;
+	static const int code_len = 1 << code_order;
 	static const int symbol_len = (1280 * rate) / 8000;
 	static const int filter_len = (((21 * rate) / 8000) & ~3) | 1;
 	static const int guard_len = symbol_len / 8;
-	static const int extended_len = symbol_len + guard_len;
-	static const int code_max = 14;
-	static const int bits_max = 1 << code_max;
-	static const int data_max = 1024;
-	static const int cols_max = 273 + 16;
-	static const int rows_max = 32;
-	static const int cons_max = cols_max * rows_max;
+	static const int max_bits = 1360 + 32;
+	static const int cons_cols = 256;
+	static const int cons_rows = 4;
+	static const int cons_total = cons_rows * cons_cols;
+	static const int code_off = - cons_cols / 2;
 	static const int mls0_len = 127;
 	static const int mls0_off = - mls0_len + 1;
 	static const int mls0_poly = 0b10001001;
 	static const int mls1_len = 255;
 	static const int mls1_off = - mls1_len / 2;
 	static const int mls1_poly = 0b100101011;
-	static const int buffer_len = 4 * extended_len;
-	static const int search_pos = extended_len;
+	static const int buffer_len = 6 * (symbol_len + guard_len);
+	static const int search_pos = buffer_len - 4 * (symbol_len + guard_len);
 	DSP::ReadPCM<value> *pcm;
 	DSP::FastFourierTransform<symbol_len, cmplx, -1> fwd;
 	DSP::BlockDC<value, value> blockdc;
 	DSP::Hilbert<cmplx, filter_len> hilbert;
 	DSP::BipBuffer<cmplx, buffer_len> input_hist;
-	DSP::TheilSenEstimator<value, cols_max> tse;
+	DSP::TheilSenEstimator<value, cons_cols> tse;
 	SchmidlCox<value, cmplx, search_pos, symbol_len/2, guard_len> correlator;
 	CODE::CRC<uint16_t> crc0;
 	CODE::CRC<uint32_t> crc1;
-
-	//You should probably play with the OSD ORDER first and set it to two: CODE::OrderedStatisticsDecoder<255, 71, ORDER> osddec;
-	//https://github.com/aicodix/modem/issues/9#issuecomment-1953722270
-	//CODE::OrderedStatisticsDecoder<255, 71, 4> osddec;
-	CODE::OrderedStatisticsDecoder<255, 71, 2> osddec;
-	CODE::PolarParityDecoder<mesg_type, code_max> polardec;
-	CODE::ReverseFisherYatesShuffle<4096> shuffle_4096;
-	CODE::ReverseFisherYatesShuffle<8192> shuffle_8192;
-	CODE::ReverseFisherYatesShuffle<16384> shuffle_16384;
-	uint8_t output_data[data_max];
+	CODE::OrderedStatisticsDecoder<255, 71, 2> osddec; //reduced from 4 to 2
+	CODE::PolarEncoder<mesg_type> polarenc;
+	CODE::PolarListDecoder<mesg_type, code_order> polardec;
 	int8_t genmat[255*71];
-	mesg_type mesg[bits_max];
-	code_type code[bits_max];
-	cmplx cons[cons_max], prev[cols_max];
+	mesg_type mesg[max_bits], mess[code_len];
+	code_type code[code_len];
+	cmplx cons[cons_total], prev[cons_cols];
 	cmplx fdom[symbol_len], tdom[symbol_len];
-	value index[cols_max], phase[cols_max];
+	value index[cons_cols], phase[cons_cols];
 	value cfo_rad, sfo_rad;
 	const uint32_t *frozen_bits;
-	int mod_bits;
-	int code_order;
 	int symbol_pos;
 	int oper_mode;
 	int crc_bits;
@@ -107,7 +95,7 @@ struct Decoder
 	{
 		return (carrier + symbol_len) % symbol_len;
 	}
-	static value nrz(bool bit)
+	static int nrz(bool bit)
 	{
 		return 1 - 2 * bit;
 	}
@@ -129,53 +117,25 @@ struct Decoder
 			fdom[(i+mls0_off/2+symbol_len/2)%(symbol_len/2)] = nrz(seq0());
 		return fdom;
 	}
+	void systematic()
+	{
+		polarenc(mess, mesg, frozen_bits, code_order);
+		int code_bits = 1 << code_order;
+		for (int i = 0, j = 0; i < code_bits && j < crc_bits; ++i)
+			if (!((frozen_bits[i/32] >> (i%32)) & 1))
+				mesg[j++] = mess[i];
+	}
 	cmplx mod_map(code_type *b)
 	{
-		switch (mod_bits) {
-		case 2:
-			return PhaseShiftKeying<4, cmplx, code_type>::map(b);
-		case 4:
-			return QuadratureAmplitudeModulation<16, cmplx, code_type>::map(b);
-		case 6:
-			return QuadratureAmplitudeModulation<64, cmplx, code_type>::map(b);
-		}
-		return 0;
+		return PhaseShiftKeying<4, cmplx, code_type>::map(b);
 	}
 	void mod_hard(code_type *b, cmplx c)
 	{
-		switch (mod_bits) {
-		case 2:
-			return PhaseShiftKeying<4, cmplx, code_type>::hard(b, c);
-		case 4:
-			return QuadratureAmplitudeModulation<16, cmplx, code_type>::hard(b, c);
-		case 6:
-			return QuadratureAmplitudeModulation<64, cmplx, code_type>::hard(b, c);
-		}
+		PhaseShiftKeying<4, cmplx, code_type>::hard(b, c);
 	}
 	void mod_soft(code_type *b, cmplx c, value precision)
 	{
-		switch (mod_bits) {
-		case 2:
-			return PhaseShiftKeying<4, cmplx, code_type>::soft(b, c, precision);
-		case 4:
-			return QuadratureAmplitudeModulation<16, cmplx, code_type>::soft(b, c, precision);
-		case 6:
-			return QuadratureAmplitudeModulation<64, cmplx, code_type>::soft(b, c, precision);
-		}
-	}
-	void shuffle(code_type *c)
-	{
-		switch (code_order) {
-		case 12:
-			shuffle_4096(c);
-			break;
-		case 13:
-			shuffle_8192(c);
-			break;
-		case 14:
-			shuffle_16384(c);
-			break;
-		}
+		PhaseShiftKeying<4, cmplx, code_type>::soft(b, c, precision);
 	}
 	const cmplx *next_sample()
 	{
@@ -185,7 +145,7 @@ struct Decoder
 			tmp = hilbert(blockdc(tmp.real()));
 		return input_hist(tmp);
 	}
-	Decoder(DSP::ReadPCM<value> *pcm, const char *const *output_names, int output_count) :
+	Decoder(uint8_t *out, int *len, DSP::ReadPCM<value> *pcm, int skip_count) :
 		pcm(pcm), correlator(mls0_seq()), crc0(0xA8F4), crc1(0x8F6E37A0)
 	{
 		CODE::BoseChaudhuriHocquenghemGenerator<255, 71>::matrix(genmat, true, {
@@ -196,11 +156,12 @@ struct Decoder
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
 			0b110101001, 0b000011111, 0b110000111, 0b110110001});
 
-		blockdc.samples(filter_len);
+		blockdc.samples(2*(symbol_len+guard_len));
 		DSP::Phasor<cmplx> osc;
 		const cmplx *buf;
-		int output_index = 0;
-		while (output_index < output_count) {
+		bool okay;
+		do {
+			okay = false;
 			do {
 				if (!pcm->good())
 					return;
@@ -214,7 +175,7 @@ struct Decoder
 
 			osc.omega(-cfo_rad);
 			for (int i = 0; i < symbol_len; ++i)
-				tdom[i] = buf[i+symbol_pos+extended_len] * osc();
+				tdom[i] = buf[i+symbol_pos+(symbol_len+guard_len)] * osc();
 			fwd(fdom, tdom);
 			CODE::MLS seq1(mls1_poly);
 			for (int i = 0; i < mls1_len; ++i)
@@ -225,7 +186,7 @@ struct Decoder
 				soft[i] = std::min<value>(std::max<value>(
 					std::nearbyint(127 * demod_or_erase(
 					fdom[bin(i+mls1_off)], fdom[bin(i-1+mls1_off)]).real()),
-					-127), 127);
+					-128), 127);
 			bool unique = osddec(data, soft, genmat);
 			if (!unique) {
 				std::cerr << "OSD error." << std::endl;
@@ -243,7 +204,7 @@ struct Decoder
 				continue;
 			}
 			oper_mode = md & 255;
-			if (oper_mode && (oper_mode < 23 || oper_mode > 30)) {
+			if (oper_mode && (oper_mode < 14 || oper_mode > 16)) {
 				std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
 				continue;
 			}
@@ -256,251 +217,140 @@ struct Decoder
 			base37_decoder(call_sign, md>>8, 9);
 			call_sign[9] = 0;
 			std::cerr << "call sign: " << call_sign << std::endl;
-			if (!oper_mode)
-				continue;
-			int parity_stride = 0;
-			int first_parity = 0;
-			int data_bits = 0;
-			int cons_rows = 0;
-			int comb_cols = 0;
-			int code_cols = 0;
-			switch (oper_mode) {
-			case 23:
-				mod_bits = 2;
-				cons_rows = 8;
-				comb_cols = 0;
-				code_order = 12;
-				code_cols = 256;
-				data_bits = 2048;
-				parity_stride = 31;
-				first_parity = 3;
-				frozen_bits = frozen_4096_2147;
-				break;
-			case 24:
-				mod_bits = 2;
-				cons_rows = 16;
-				comb_cols = 0;
-				code_order = 13;
-				code_cols = 256;
-				data_bits = 4096;
-				parity_stride = 31;
-				first_parity = 5;
-				frozen_bits = frozen_8192_4261;
-				break;
-			case 25:
-				mod_bits = 2;
-				cons_rows = 32;
-				comb_cols = 0;
-				code_order = 14;
-				code_cols = 256;
-				data_bits = 8192;
-				parity_stride = 31;
-				first_parity = 9;
-				frozen_bits = frozen_16384_8489;
-				break;
-			case 26:
-				mod_bits = 4;
-				cons_rows = 4;
-				comb_cols = 8;
-				code_order = 12;
-				code_cols = 256;
-				data_bits = 2048;
-				parity_stride = 31;
-				first_parity = 3;
-				frozen_bits = frozen_4096_2147;
-				break;
-			case 27:
-				mod_bits = 4;
-				cons_rows = 8;
-				comb_cols = 8;
-				code_order = 13;
-				code_cols = 256;
-				data_bits = 4096;
-				parity_stride = 31;
-				first_parity = 5;
-				frozen_bits = frozen_8192_4261;
-				break;
-			case 28:
-				mod_bits = 4;
-				cons_rows = 16;
-				comb_cols = 8;
-				code_order = 14;
-				code_cols = 256;
-				data_bits = 8192;
-				parity_stride = 31;
-				first_parity = 9;
-				frozen_bits = frozen_16384_8489;
-				break;
-			case 29:
-				mod_bits = 6;
-				cons_rows = 5;
-				comb_cols = 16;
-				code_order = 13;
-				code_cols = 273;
-				data_bits = 4096;
-				parity_stride = 31;
-				first_parity = 5;
-				frozen_bits = frozen_8192_4261;
-				break;
-			case 30:
-				mod_bits = 6;
-				cons_rows = 10;
-				comb_cols = 16;
-				code_order = 14;
-				code_cols = 273;
-				data_bits = 8192;
-				parity_stride = 31;
-				first_parity = 9;
-				frozen_bits = frozen_16384_8489;
-				break;
-			default:
-				return;
-			}
-			int data_bytes = data_bits / 8;
-			int cons_cols = code_cols + comb_cols;
-			int comb_dist = comb_cols ? cons_cols / comb_cols : 1;
-			int comb_off = comb_cols ? comb_dist / 2 : 1;
-			int code_off = - cons_cols / 2;
+			okay = true;
+		} while (skip_count--);
 
-			for (int i = 0; i < symbol_pos+extended_len; ++i)
-				correlator(buf = next_sample());
+		*len = 0;
+		if (!okay || !oper_mode)
+			return;
+
+		for (int i = 0; i < symbol_pos+(symbol_len+guard_len); ++i)
+			buf = next_sample();
+		for (int i = 0; i < symbol_len; ++i)
+			tdom[i] = buf[i] * osc();
+		for (int i = 0; i < guard_len; ++i)
+			osc();
+		fwd(fdom, tdom);
+		for (int i = 0; i < cons_cols; ++i)
+			prev[i] = fdom[bin(i+code_off)];
+		std::cerr << "demod ";
+		for (int j = 0; j < cons_rows; ++j) {
+			for (int i = 0; i < symbol_len+guard_len; ++i)
+				buf = next_sample();
 			for (int i = 0; i < symbol_len; ++i)
 				tdom[i] = buf[i] * osc();
 			for (int i = 0; i < guard_len; ++i)
 				osc();
 			fwd(fdom, tdom);
 			for (int i = 0; i < cons_cols; ++i)
+				cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
+			for (int i = 0; i < cons_cols; ++i)
 				prev[i] = fdom[bin(i+code_off)];
-			std::cerr << "demod ";
-			CODE::MLS seq0(mls0_poly);
+			std::cerr << ".";
+		}
+		std::cerr << " done" << std::endl;
+		if (1) {
+			value sum_slope = 0, sum_yint = 0;
 			for (int j = 0; j < cons_rows; ++j) {
-				for (int i = 0; i < extended_len; ++i)
-					correlator(buf = next_sample());
-				for (int i = 0; i < symbol_len; ++i)
-					tdom[i] = buf[i] * osc();
-				for (int i = 0; i < guard_len; ++i)
-					osc();
-				fwd(fdom, tdom);
-				for (int i = 0; i < cons_cols; ++i)
-					cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
-				if (oper_mode > 25) {
-					for (int i = 0; i < comb_cols; ++i)
-						cons[cons_cols*j+comb_dist*i+comb_off] *= nrz(seq0());
-					for (int i = 0; i < comb_cols; ++i) {
-						index[i] = code_off + comb_dist * i + comb_off;
-						phase[i] = arg(cons[cons_cols*j+comb_dist*i+comb_off]);
-					}
-					tse.compute(index, phase, comb_cols);
-					//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
-					//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
-					for (int i = 0; i < cons_cols; ++i)
-						cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-					for (int i = 0; i < cons_cols; ++i)
-						if (i % comb_dist == comb_off)
-							prev[i] = fdom[bin(i+code_off)];
-						else
-							prev[i] *= DSP::polar<value>(1, tse(i+code_off));
-				}
 				for (int i = 0; i < cons_cols; ++i) {
-					index[i] = code_off + i;
-					if (i % comb_dist == comb_off) {
-						phase[i] = arg(cons[cons_cols*j+i]);
-					} else {
-						code_type tmp[mod_bits];
-						mod_hard(tmp, cons[cons_cols*j+i]);
-						phase[i] = arg(cons[cons_cols*j+i] * conj(mod_map(tmp)));
-					}
+					code_type tmp[mod_bits];
+					mod_hard(tmp, cons[cons_cols*j+i]);
+					index[i] = i + code_off;
+					phase[i] = arg(cons[cons_cols*j+i] * conj(mod_map(tmp)));
 				}
 				tse.compute(index, phase, cons_cols);
 				//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
 				//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
+				sum_slope += tse.slope();
+				sum_yint += tse.yint();
 				for (int i = 0; i < cons_cols; ++i)
 					cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-				if (oper_mode > 25) {
-					for (int i = 0; i < cons_cols; ++i)
-						if (i % comb_dist != comb_off)
-							prev[i] *= DSP::polar<value>(1, tse(i+code_off));
-				} else {
-					for (int i = 0; i < cons_cols; ++i)
-						prev[i] = fdom[bin(i+code_off)];
-				}
-				std::cerr << ".";
 			}
-			std::cerr << " done" << std::endl;
+			value avg_slope = sum_slope / cons_rows;
+			value avg_yint = sum_yint / cons_rows;
+			//for (int i = 0; i < cons_cnt; ++i)
+			//	cons[i] *= DSP::polar<value>(1, -(avg_yint+avg_slope*((i%cons_cols)+code_off)));
+			sfo_rad -= avg_slope * symbol_len / value(symbol_len+guard_len);
+			cfo_rad += avg_yint / (symbol_len+guard_len);
+			std::cerr << "coarse sfo: " << 1000000 * sfo_rad / Const::TwoPi() << " ppm" << std::endl;
+			std::cerr << "finer cfo: " << cfo_rad * (rate / Const::TwoPi()) << " Hz " << std::endl;
+		}
+		if (1) {
 			std::cerr << "Es/N0 (dB):";
 			value sp = 0, np = 0;
-			for (int j = 0, k = 0; j < cons_rows; ++j) {
-				if (oper_mode > 25) {
-					for (int i = 0; i < comb_cols; ++i) {
-						cmplx hard(1, 0);
-						cmplx error = cons[cons_cols*j+comb_dist*i+comb_off] - hard;
-						sp += norm(hard);
-						np += norm(error);
-					}
-				} else {
-					for (int i = 0; i < cons_cols; ++i) {
-						code_type tmp[mod_bits];
-						mod_hard(tmp, cons[cons_cols*j+i]);
-						cmplx hard = mod_map(tmp);
-						cmplx error = cons[cons_cols*j+i] - hard;
-						sp += norm(hard);
-						np += norm(error);
-					}
+			for (int j = 0; j < cons_rows; ++j) {
+				for (int i = 0; i < cons_cols; ++i) {
+					code_type tmp[mod_bits];
+					mod_hard(tmp, cons[cons_cols*j+i]);
+					cmplx hard = mod_map(tmp);
+					cmplx error = cons[cons_cols*j+i] - hard;
+					sp += norm(hard);
+					np += norm(error);
 				}
 				value precision = sp / np;
-				// precision = 8;
 				value snr = DSP::decibel(precision);
 				std::cerr << " " << snr;
-				if (std::is_same<code_type, int8_t>::value && precision > 32)
-					precision = 32;
-				for (int i = 0; i < cons_cols; ++i) {
-					if (oper_mode > 25 && i % comb_dist == comb_off)
-						continue;
-					mod_soft(code+k, cons[cons_cols*j+i], precision);
-					k += mod_bits;
-				}
+				if (std::is_same<code_type, int8_t>::value && precision > 8)
+					precision = 8;
+				for (int i = 0; i < cons_cols; ++i)
+					mod_soft(code+2*(cons_cols*j+i), cons[cons_cols*j+i], precision);
 			}
 			std::cerr << std::endl;
-			crc_bits = data_bits + 32;
-			for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
-				code[i] = 0;
-			shuffle(code);
-			polardec(nullptr, mesg, code, frozen_bits, code_order, parity_stride, first_parity);
-			int best = -1;
-			for (int k = 0; k < mesg_type::SIZE; ++k) {
-				crc1.reset();
-				for (int i = 0; i < crc_bits; ++i)
-					crc1(mesg[i].v[k] < 0);
-				if (crc1() == 0) {
-					best = k;
-					break;
-				}
-			}
-			if (best < 0) {
-				std::cerr << "payload decoding error." << std::endl;
-				continue;
-			}
-			for (int i = 0; i < data_bits; ++i)
-				CODE::set_le_bit(output_data, i, mesg[i].v[best] < 0);
-
-			const char *output_name = output_names[output_index++];
-			if (output_count == 1 && output_name[0] == '-' && output_name[1] == 0)
-				output_name = "/dev/stdout";
-			std::ofstream output_file(output_name, std::ios::binary | std::ios::trunc);
-			if (output_file.bad()) {
-				std::cerr << "Couldn't open file \"" << output_name << "\" for writing." << std::endl;
-				continue;
-			}
-			CODE::Xorshift32 scrambler;
-			for (int i = 0; i < data_bytes; ++i)
-				output_data[i] ^= scrambler();
-			for (int i = 0; i < data_bytes; ++i)
-				output_file.put(output_data[i]);
+		} else {
+			value precision = 8;
+			for (int i = 0; i < cons_total; ++i)
+				mod_soft(code+mod_bits*i, cons[i], precision);
 		}
+		int data_bits = 0;
+		switch (oper_mode) {
+		case 14:
+			data_bits = 1360;
+			frozen_bits = frozen_2048_1392;
+			break;
+		case 15:
+			data_bits = 1024;
+			frozen_bits = frozen_2048_1056;
+			break;
+		case 16:
+			data_bits = 680;
+			frozen_bits = frozen_2048_712;
+			break;
+		default:
+			return;
+		}
+		*len = data_bits / 8;
+		crc_bits = data_bits + 32;
+		polardec(nullptr, mesg, code, frozen_bits, code_order);
+		systematic();
+		int best = -1;
+		for (int k = 0; k < mesg_type::SIZE; ++k) {
+			crc1.reset();
+			for (int i = 0; i < crc_bits; ++i)
+				crc1(mesg[i].v[k] < 0);
+			if (crc1() == 0) {
+				best = k;
+				break;
+			}
+		}
+		if (best < 0) {
+			std::cerr << "payload decoding error." << std::endl;
+			*len = 0;
+			return;
+		}
+		int flips = 0;
+		for (int i = 0, j = 0; i < data_bits; ++i, ++j) {
+			while ((frozen_bits[j / 32] >> (j % 32)) & 1)
+				++j;
+			bool received = code[j] < 0;
+			bool decoded = mesg[i].v[best] < 0;
+			flips += received != decoded;
+			CODE::set_le_bit(out, i, decoded);
+		}
+		std::cerr << "bit flips: " << flips << std::endl;
 	}
 };
 
-int main_decode(const char* input_name, const char* output_file)
+int main_decode(const char* input_name, const char* output_name)
 {
 	typedef float value;
 	typedef DSP::Complex<value> cmplx;
@@ -512,25 +362,41 @@ int main_decode(const char* input_name, const char* output_file)
 		return 1;
 	}
 
-	const char *output_names[] = { output_file };
-	int output_count = 1;
+	int skip_count = 0;
+
+	const int data_max = 1360 / 8;
+	uint8_t *output_data = new uint8_t[data_max];
+	int data_len = 0;
+
 	switch (input_file.rate()) {
 	case 8000:
-		delete new Decoder<value, cmplx, 8000>(&input_file, output_names, output_count);
+		delete new Decoder<value, cmplx, 8000>(output_data, &data_len, &input_file, skip_count);
 		break;
 	case 16000:
-		delete new Decoder<value, cmplx, 16000>(&input_file, output_names, output_count);
+		delete new Decoder<value, cmplx, 16000>(output_data, &data_len, &input_file, skip_count);
 		break;
 	case 44100:
-		delete new Decoder<value, cmplx, 44100>(&input_file, output_names, output_count);
+		delete new Decoder<value, cmplx, 44100>(output_data, &data_len, &input_file, skip_count);
 		break;
 	case 48000:
-		delete new Decoder<value, cmplx, 48000>(&input_file, output_names, output_count);
+		delete new Decoder<value, cmplx, 48000>(output_data, &data_len, &input_file, skip_count);
 		break;
 	default:
 		std::cerr << "Unsupported sample rate." << std::endl;
 		return 1;
 	}
+
+	std::ofstream output_file(output_name, std::ios::binary | std::ios::trunc);
+	if (output_file.bad()) {
+		std::cerr << "Couldn't open file \"" << output_name << "\" for writing." << std::endl;
+		return 1;
+	}
+	CODE::Xorshift32 scrambler;
+	for (int i = 0; i < data_len; ++i)
+		output_data[i] ^= scrambler();
+	for (int i = 0; i < data_len; ++i)
+		output_file.put(output_data[i]);
+	delete []output_data;
 	return 0;
 }
 
