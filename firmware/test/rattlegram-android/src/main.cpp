@@ -31,6 +31,7 @@ void setup()
 	memset(stagedCall, 0, 10);
 	int result;
 	const char call[] = "NOCALL";
+	uint32_t startTime = millis();
 	encoder->configure(mesg, (const int8_t*)call, carrierFrequency, noiseSymbols, fancyHeader);
 	ESP_LOGI(TAG, "Configured encoder");
 	bool encoder_busy = true;
@@ -81,6 +82,7 @@ void setup()
 			break;
 		}
 	}while(encoder_busy);
+	ESP_LOGI(TAG, "Time taken: %d", millis() - startTime);
 	delete payload;
 	delete stagedCall;
 	delete outputBuffer;
