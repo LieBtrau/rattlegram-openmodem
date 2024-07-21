@@ -97,6 +97,8 @@ struct Decoder
 	const cmplx *buf;
 	bool (*sampleSource)(int16_t* sample) { nullptr }; 
 	DSP::Phasor<cmplx> osc;
+	uint8_t preamble_bits[(mls1_len+7)/8];
+
 
 	void setSampleSource(bool (*source)(int16_t* sample))
 	{
@@ -236,13 +238,12 @@ struct Decoder
 		for (int i = 0; i < mls1_len; ++i)
 			fdom[bin(i+mls1_off)] *= nrz(seq1());
 		int8_t soft[mls1_len];
-		uint8_t data[(mls1_len+7)/8];
 		for (int i = 0; i < mls1_len; ++i)
 			soft[i] = std::min<value>(std::max<value>(
 				std::nearbyint(127 * demod_or_erase(
 				fdom[bin(i+mls1_off)], fdom[bin(i-1+mls1_off)]).real()),
 				-127), 127);
-		bool unique = osddec(data, soft, genmat);
+		bool unique = osddec(preamble_bits, soft, genmat);
 		if (!unique) {
 			std::cerr << "OSD error." << std::endl;
 			return false;
@@ -250,28 +251,32 @@ struct Decoder
 		return true;
 	}
 		
-	// 	uint64_t md = 0;
-	// 	for (int i = 0; i < 55; ++i)
-	// 		md |= (uint64_t)CODE::get_be_bit(data, i) << i;
-	// 	uint16_t cs = 0;
-	// 	for (int i = 0; i < 16; ++i)
-	// 		cs |= (uint16_t)CODE::get_be_bit(data, i+55) << i;
-	// 	crc0.reset();
-	// 	if (crc0(md<<9) != cs) {
-	// 		std::cerr << "header CRC error." << std::endl;
-	// 		return false;
-	// 	}
-	// 	oper_mode = md & 255;
-	// 	if (oper_mode && (oper_mode < 22 || oper_mode > 30)) {
-	// 		std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
-	// 		continue;
-	// 	}
-	// 	std::cerr << "oper mode: " << oper_mode << std::endl;
-	// 	if ((md>>8) == 0 || (md>>8) >= 129961739795077L) {
-	// 		std::cerr << "call sign unsupported." << std::endl;
-	// 		continue;
-	// 	}
-	// }
+	bool meta_data(uint64_t& call_sign)
+	{
+		uint64_t meta_data = 0;
+		for (int i = 0; i < 55; ++i)
+			meta_data |= (uint64_t)CODE::get_be_bit(preamble_bits, i) << i;
+		uint16_t checksum = 0;
+		for (int i = 0; i < 16; ++i)
+			checksum |= (uint16_t)CODE::get_be_bit(preamble_bits, i+55) << i;
+		crc0.reset();
+		if (crc0(meta_data<<9) != checksum) {
+			std::cerr << "header CRC error." << std::endl;
+			return false;
+		}
+		oper_mode = meta_data & 255;
+		if (oper_mode && (oper_mode < 22 || oper_mode > 30)) {
+			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
+			return false;
+		}
+		std::cerr << "oper mode: " << oper_mode << std::endl;
+		if ((meta_data>>8) == 0 || (meta_data>>8) >= 129961739795077L) {
+			std::cerr << "call sign unsupported." << std::endl;
+			return false;
+		}
+		call_sign = meta_data >> 8;
+		return true;
+	}
 
 
 // 			char call_sign[10];
