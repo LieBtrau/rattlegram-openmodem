@@ -14,7 +14,7 @@ std::queue<int16_t> sampleQueue;
 
 void sampleSink(int16_t samples[], int count)
 {
-	ESP_LOGI(TAG, "sampleSink: %d", count);
+	//ESP_LOGI(TAG, "sampleSink: %d", count);
 	for (int i = 0; i < count; i++)
 	{
 		sampleQueue.push(samples[i]);
@@ -47,38 +47,38 @@ void setup()
 	outputBuffer = new int16_t[encoder->symbol_len + encoder->guard_len];
 
 	uint32_t startTime = millis();
-	ESP_LOGI(TAG, "Creating pilot block");
+	//ESP_LOGI(TAG, "Creating pilot block");
 	encoder->pilot_block();
-	ESP_LOGI(TAG, "Creating correlator block");
+	//ESP_LOGI(TAG, "Creating correlator block");
 	encoder->schmidl_cox();
-	ESP_LOGI(TAG, "Creating metadata block");
+	//ESP_LOGI(TAG, "Creating metadata block");
 	encoder->meta_data((call_sign << 8) | oper_mode);
 	// Payload
 	uint8_t msg[] = {'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!', '\0'};
-	ESP_LOGI(TAG, "Creating payload block");
+	//ESP_LOGI(TAG, "Creating payload block");
 	encoder->addPacket(msg, sizeof(msg));
 	// End of the transmission
-	ESP_LOGI(TAG, "Creating tail block");
+	//ESP_LOGI(TAG, "Creating tail block");
 	encoder->tail_block();
-	ESP_LOGI(TAG, "Time to build a packet: %d ms", millis() - startTime);
+	//ESP_LOGI(TAG, "Time to build a packet: %d ms", millis() - startTime);
 
 	// Start of the reception
 	startTime = millis();
 	if (!decoder->feed())
 	{
-		ESP_LOGI(TAG, "Feed failed");
+		ESP_LOGE(TAG, "Feed failed");
 		return;
 	}
 	ESP_LOGI(TAG, "Feed successful");
 	if (!decoder->preamble())
 	{
-		ESP_LOGI(TAG, "Preamble not detected");
+		ESP_LOGE(TAG, "Preamble not detected");
 		return;
 	}
 	ESP_LOGI(TAG, "Preamble detected");
 	if (!decoder->meta_data(rx_call_sign))
 	{
-		ESP_LOGI(TAG, "Metadata not detected");
+		ESP_LOGE(TAG, "Metadata not detected");
 		return;
 	}
 	ESP_LOGI(TAG, "Metadata: %lu", rx_call_sign);
@@ -87,12 +87,12 @@ void setup()
 	if (decoder->fetch(&dec_msg, len))
 	{
 		ESP_LOGI(TAG, "Message: %s", dec_msg);
+		ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
 	}
 	else
 	{
-		ESP_LOGI(TAG, "Message not detected");
+		ESP_LOGE(TAG, "Message not detected");
 	}
-	ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
 }
 
 void loop()
