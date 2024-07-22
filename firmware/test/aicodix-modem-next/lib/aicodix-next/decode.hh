@@ -189,11 +189,7 @@ struct Decoder
 	{
 		cmplx tmp;
 		int16_t sample;
-		if (!sampleSource(&sample))
-		{
-			std::cerr << "No more samples" << std::endl;
-			return nullptr;
-		}
+		sampleSource(&sample);
 		tmp = hilbert(blockdc(sample));
 		return input_hist(tmp);
 	}
@@ -212,11 +208,14 @@ struct Decoder
 
 	bool feed()
 	{
+		int ctr = 0;
 		do {
 			buf = next_sample();
 			if(!buf)
 				return false;
+			++ctr;
 		} while (!correlator(buf));
+		std::cerr << "correlator: " << ctr << std::endl;
 
 		symbol_pos = correlator.symbol_pos;
 		cfo_rad = correlator.cfo_rad;
@@ -278,262 +277,257 @@ struct Decoder
 		return true;
 	}
 
+	bool fetch(uint8_t** msg, int& len)
+	{
+		if (!oper_mode)
+			return false;
+		int parity_stride = 0;
+		int first_parity = 0;
+		int data_bits = 0;
+		int cons_rows = 0;
+		int comb_cols = 0;
+		int code_cols = 0;
+		switch (oper_mode) {
+		case 22:
+			mod_bits = 3;
+			cons_rows = 3;
+			comb_cols = 0;
+			code_order = 12; 
+			code_cols = 256;
+			data_bits = 2048;
+			parity_stride = 31;
+			first_parity = 3;
+			frozen_bits = frozen_4096_2147;
+			break;
+		case 23:
+			mod_bits = 2;
+			cons_rows = 8;
+			comb_cols = 0;
+			code_order = 12;
+			code_cols = 256;
+			data_bits = 2048;
+			parity_stride = 31;
+			first_parity = 3;
+			frozen_bits = frozen_4096_2147;
+			break;
+		case 24:
+			mod_bits = 3;//2;
+			cons_rows = 10;//16;
+			comb_cols = 0;
+			code_order = 13;
+			code_cols = 256;
+			data_bits = 4096;
+			parity_stride = 31;
+			first_parity = 5;
+			frozen_bits = frozen_8192_4261;
+			break;
+		case 25:
+			mod_bits = 2;
+			cons_rows = 32;
+			comb_cols = 0;
+			code_order = 14;
+			code_cols = 256;
+			data_bits = 8192;
+			parity_stride = 31;
+			first_parity = 9;
+			frozen_bits = frozen_16384_8489;
+			break;
+		case 26:
+			mod_bits = 4;
+			cons_rows = 4;
+			comb_cols = 8;
+			code_order = 12;
+			code_cols = 256;
+			data_bits = 2048;
+			parity_stride = 31;
+			first_parity = 3;
+			frozen_bits = frozen_4096_2147;
+			break;
+		case 27:
+			mod_bits = 4;
+			cons_rows = 8;
+			comb_cols = 8;
+			code_order = 13;
+			code_cols = 256;
+			data_bits = 4096;
+			parity_stride = 31;
+			first_parity = 5;
+			frozen_bits = frozen_8192_4261;
+			break;
+		case 28:
+			mod_bits = 4;
+			cons_rows = 16;
+			comb_cols = 8;
+			code_order = 14;
+			code_cols = 256;
+			data_bits = 8192;
+			parity_stride = 31;
+			first_parity = 9;
+			frozen_bits = frozen_16384_8489;
+			break;
+		case 29:
+			mod_bits = 6;
+			cons_rows = 5;
+			comb_cols = 16;
+			code_order = 13;
+			code_cols = 273;
+			data_bits = 4096;
+			parity_stride = 31;
+			first_parity = 5;
+			frozen_bits = frozen_8192_4261;
+			break;
+		case 30:
+			mod_bits = 6;
+			cons_rows = 10;
+			comb_cols = 16;
+			code_order = 14;
+			code_cols = 273;
+			data_bits = 8192;
+			parity_stride = 31;
+			first_parity = 9;
+			frozen_bits = frozen_16384_8489;
+			break;
+		default:
+			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
+			return false;
+		}
+		int data_bytes = data_bits / 8;
+		int cons_cols = code_cols + comb_cols;
+		int comb_dist = comb_cols ? cons_cols / comb_cols : 1;
+		int comb_off = comb_cols ? comb_dist / 2 : 1;
+		int code_off = - cons_cols / 2;
 
-// 			char call_sign[10];
-// 			base37_decoder(call_sign, md>>8, 9);
-// 			call_sign[9] = 0;
-// 			std::cerr << "call sign: " << call_sign << std::endl;
-// 			if (!oper_mode)
-// 				continue;
-// 			int parity_stride = 0;
-// 			int first_parity = 0;
-// 			int data_bits = 0;
-// 			int cons_rows = 0;
-// 			int comb_cols = 0;
-// 			int code_cols = 0;
-// 			switch (oper_mode) {
-// 			case 22:
-// 				mod_bits = 3;
-// 				cons_rows = 3;
-// 				comb_cols = 0;
-// 				code_order = 12; 
-// 				code_cols = 256;
-// 				data_bits = 2048;
-// 				parity_stride = 31;
-// 				first_parity = 3;
-// 				frozen_bits = frozen_4096_2147;
-// 				break;
-// 			case 23:
-// 				mod_bits = 2;
-// 				cons_rows = 8;
-// 				comb_cols = 0;
-// 				code_order = 12;
-// 				code_cols = 256;
-// 				data_bits = 2048;
-// 				parity_stride = 31;
-// 				first_parity = 3;
-// 				frozen_bits = frozen_4096_2147;
-// 				break;
-// 			case 24:
-// 				mod_bits = 3;//2;
-// 				cons_rows = 10;//16;
-// 				comb_cols = 0;
-// 				code_order = 13;
-// 				code_cols = 256;
-// 				data_bits = 4096;
-// 				parity_stride = 31;
-// 				first_parity = 5;
-// 				frozen_bits = frozen_8192_4261;
-// 				break;
-// 			case 25:
-// 				mod_bits = 2;
-// 				cons_rows = 32;
-// 				comb_cols = 0;
-// 				code_order = 14;
-// 				code_cols = 256;
-// 				data_bits = 8192;
-// 				parity_stride = 31;
-// 				first_parity = 9;
-// 				frozen_bits = frozen_16384_8489;
-// 				break;
-// 			case 26:
-// 				mod_bits = 4;
-// 				cons_rows = 4;
-// 				comb_cols = 8;
-// 				code_order = 12;
-// 				code_cols = 256;
-// 				data_bits = 2048;
-// 				parity_stride = 31;
-// 				first_parity = 3;
-// 				frozen_bits = frozen_4096_2147;
-// 				break;
-// 			case 27:
-// 				mod_bits = 4;
-// 				cons_rows = 8;
-// 				comb_cols = 8;
-// 				code_order = 13;
-// 				code_cols = 256;
-// 				data_bits = 4096;
-// 				parity_stride = 31;
-// 				first_parity = 5;
-// 				frozen_bits = frozen_8192_4261;
-// 				break;
-// 			case 28:
-// 				mod_bits = 4;
-// 				cons_rows = 16;
-// 				comb_cols = 8;
-// 				code_order = 14;
-// 				code_cols = 256;
-// 				data_bits = 8192;
-// 				parity_stride = 31;
-// 				first_parity = 9;
-// 				frozen_bits = frozen_16384_8489;
-// 				break;
-// 			case 29:
-// 				mod_bits = 6;
-// 				cons_rows = 5;
-// 				comb_cols = 16;
-// 				code_order = 13;
-// 				code_cols = 273;
-// 				data_bits = 4096;
-// 				parity_stride = 31;
-// 				first_parity = 5;
-// 				frozen_bits = frozen_8192_4261;
-// 				break;
-// 			case 30:
-// 				mod_bits = 6;
-// 				cons_rows = 10;
-// 				comb_cols = 16;
-// 				code_order = 14;
-// 				code_cols = 273;
-// 				data_bits = 8192;
-// 				parity_stride = 31;
-// 				first_parity = 9;
-// 				frozen_bits = frozen_16384_8489;
-// 				break;
-// 			default:
-// 				return;
-// 			}
-// 			int data_bytes = data_bits / 8;
-// 			int cons_cols = code_cols + comb_cols;
-// 			int comb_dist = comb_cols ? cons_cols / comb_cols : 1;
-// 			int comb_off = comb_cols ? comb_dist / 2 : 1;
-// 			int code_off = - cons_cols / 2;
-
-// 			for (int i = 0; i < symbol_pos+extended_len; ++i)
-// 				correlator(buf = next_sample());
-// 			for (int i = 0; i < symbol_len; ++i)
-// 				tdom[i] = buf[i] * osc();
-// 			for (int i = 0; i < guard_len; ++i)
-// 				osc();
-// 			fwd(fdom, tdom);
-// 			for (int i = 0; i < cons_cols; ++i)
-// 				prev[i] = fdom[bin(i+code_off)];
-// 			std::cerr << "demod ";
-// 			CODE::MLS seq0(mls0_poly);
-// 			for (int j = 0; j < cons_rows; ++j) {
-// 				for (int i = 0; i < extended_len; ++i)
-// 					correlator(buf = next_sample());
-// 				for (int i = 0; i < symbol_len; ++i)
-// 					tdom[i] = buf[i] * osc();
-// 				for (int i = 0; i < guard_len; ++i)
-// 					osc();
-// 				fwd(fdom, tdom);
-// 				for (int i = 0; i < cons_cols; ++i)
-// 					cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
-// 				if (oper_mode > 25) {
-// 					for (int i = 0; i < comb_cols; ++i)
-// 						cons[cons_cols*j+comb_dist*i+comb_off] *= nrz(seq0());
-// 					for (int i = 0; i < comb_cols; ++i) {
-// 						index[i] = code_off + comb_dist * i + comb_off;
-// 						phase[i] = arg(cons[cons_cols*j+comb_dist*i+comb_off]);
-// 					}
-// 					tse.compute(index, phase, comb_cols);
-// 					//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
-// 					//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
-// 					for (int i = 0; i < cons_cols; ++i)
-// 						cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-// 					for (int i = 0; i < cons_cols; ++i)
-// 						if (i % comb_dist == comb_off)
-// 							prev[i] = fdom[bin(i+code_off)];
-// 						else
-// 							prev[i] *= DSP::polar<value>(1, tse(i+code_off));
-// 				}
-// 				for (int i = 0; i < cons_cols; ++i) {
-// 					index[i] = code_off + i;
-// 					if (i % comb_dist == comb_off) {
-// 						phase[i] = arg(cons[cons_cols*j+i]);
-// 					} else {
-// 						code_type tmp[mod_bits];
-// 						mod_hard(tmp, cons[cons_cols*j+i]);
-// 						phase[i] = arg(cons[cons_cols*j+i] * conj(mod_map(tmp)));
-// 					}
-// 				}
-// 				tse.compute(index, phase, cons_cols);
-// 				//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
-// 				//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
-// 				for (int i = 0; i < cons_cols; ++i)
-// 					cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-// 				if (oper_mode > 25) {
-// 					for (int i = 0; i < cons_cols; ++i)
-// 						if (i % comb_dist != comb_off)
-// 							prev[i] *= DSP::polar<value>(1, tse(i+code_off));
-// 				} else {
-// 					for (int i = 0; i < cons_cols; ++i)
-// 						prev[i] = fdom[bin(i+code_off)];
-// 				}
-// 				std::cerr << ".";
-// 			}
-// 			std::cerr << " done" << std::endl;
-// 			std::cerr << "Es/N0 (dB):";
-// 			value sp = 0, np = 0;
-// 			for (int j = 0, k = 0; j < cons_rows; ++j) {
-// 				if (oper_mode > 25) {
-// 					for (int i = 0; i < comb_cols; ++i) {
-// 						cmplx hard(1, 0);
-// 						cmplx error = cons[cons_cols*j+comb_dist*i+comb_off] - hard;
-// 						sp += norm(hard);
-// 						np += norm(error);
-// 					}
-// 				} else {
-// 					for (int i = 0; i < cons_cols; ++i) {
-// 						code_type tmp[mod_bits];
-// 						mod_hard(tmp, cons[cons_cols*j+i]);
-// 						cmplx hard = mod_map(tmp);
-// 						cmplx error = cons[cons_cols*j+i] - hard;
-// 						sp += norm(hard);
-// 						np += norm(error);
-// 					}
-// 				}
-// 				value precision = sp / np;
-// 				// precision = 8;
-// 				value snr = DSP::decibel(precision);
-// 				std::cerr << " " << snr;
-// 				if (std::is_same<code_type, int8_t>::value && precision > 32)
-// 					precision = 32;
-// 				for (int i = 0; i < cons_cols; ++i) {
-// 					if (oper_mode > 25 && i % comb_dist == comb_off)
-// 						continue;
-// 					mod_soft(code+k, cons[cons_cols*j+i], precision);
-// 					k += mod_bits;
-// 				}
-// 			}
-// 			std::cerr << std::endl;
-// 			crc_bits = data_bits + 32;
-// 			for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
-// 				code[i] = 0;
-// 			shuffle(code);
-// 			polardec(nullptr, mesg, code, frozen_bits, code_order, parity_stride, first_parity);
-// 			int best = -1;
-// 			for (int k = 0; k < mesg_type::SIZE; ++k) {
-// 				crc1.reset();
-// 				for (int i = 0; i < crc_bits; ++i)
-// 					crc1(mesg[i].v[k] < 0);
-// 				if (crc1() == 0) {
-// 					best = k;
-// 					break;
-// 				}
-// 			}
-// 			if (best < 0) {
-// 				std::cerr << "payload decoding error." << std::endl;
-// 				continue;
-// 			}
-// 			for (int i = 0; i < data_bits; ++i)
-// 				CODE::set_le_bit(output_data, i, mesg[i].v[best] < 0);
-
-// 			const char *output_name = output_names[output_index++];
-// 			if (output_count == 1 && output_name[0] == '-' && output_name[1] == 0)
-// 				output_name = "/dev/stdout";
-// 			std::ofstream output_file(output_name, std::ios::binary | std::ios::trunc);
-// 			if (output_file.bad()) {
-// 				std::cerr << "Couldn't open file \"" << output_name << "\" for writing." << std::endl;
-// 				continue;
-// 			}
-// 			CODE::Xorshift32 scrambler;
-// 			for (int i = 0; i < data_bytes; ++i)
-// 				output_data[i] ^= scrambler();
-// 			for (int i = 0; i < data_bytes; ++i)
-// 				output_file.put(output_data[i]);
-// 		}
-// 	}
+		for (int i = 0; i < symbol_pos+extended_len; ++i)
+		{
+			buf = next_sample();
+			correlator(buf);
+		}
+		for (int i = 0; i < symbol_len; ++i)
+			tdom[i] = buf[i] * osc();
+		for (int i = 0; i < guard_len; ++i)
+			osc();
+		fwd(fdom, tdom);
+		for (int i = 0; i < cons_cols; ++i)
+			prev[i] = fdom[bin(i+code_off)];
+		std::cerr << "demod " << cons_rows << " rows" << std::endl;
+		CODE::MLS seq0(mls0_poly);
+		for (int j = 0; j < cons_rows; ++j) {
+			for (int i = 0; i < extended_len; ++i)
+			{
+				buf = next_sample();
+				correlator(buf);
+			}
+			for (int i = 0; i < symbol_len; ++i)
+				tdom[i] = buf[i] * osc();
+			for (int i = 0; i < guard_len; ++i)
+				osc();
+			fwd(fdom, tdom);
+			for (int i = 0; i < cons_cols; ++i)
+				cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
+			if (mod_bits > 3) {
+				for (int i = 0; i < comb_cols; ++i)
+					cons[cons_cols*j+comb_dist*i+comb_off] *= nrz(seq0());
+				for (int i = 0; i < comb_cols; ++i) {
+					index[i] = code_off + comb_dist * i + comb_off;
+					phase[i] = arg(cons[cons_cols*j+comb_dist*i+comb_off]);
+				}
+				tse.compute(index, phase, comb_cols);
+				//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
+				//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
+				for (int i = 0; i < cons_cols; ++i)
+					cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
+				for (int i = 0; i < cons_cols; ++i)
+					if (i % comb_dist == comb_off)
+						prev[i] = fdom[bin(i+code_off)];
+					else
+						prev[i] *= DSP::polar<value>(1, tse(i+code_off));
+			}
+			for (int i = 0; i < cons_cols; ++i) {
+				index[i] = code_off + i;
+				if (i % comb_dist == comb_off) {
+					phase[i] = arg(cons[cons_cols*j+i]);
+				} else {
+					code_type tmp[mod_bits];
+					mod_hard(tmp, cons[cons_cols*j+i]);
+					phase[i] = arg(cons[cons_cols*j+i] * conj(mod_map(tmp)));
+				}
+			}
+			tse.compute(index, phase, cons_cols);
+			//std::cerr << "Theil-Sen slope = " << tse.slope() << std::endl;
+			//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
+			for (int i = 0; i < cons_cols; ++i)
+				cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
+			if (mod_bits > 3) {
+				for (int i = 0; i < cons_cols; ++i)
+					if (i % comb_dist != comb_off)
+						prev[i] *= DSP::polar<value>(1, tse(i+code_off));
+			} else {
+				for (int i = 0; i < cons_cols; ++i)
+					prev[i] = fdom[bin(i+code_off)];
+			}
+			std::cerr << ".";
+		}
+		std::cerr << " done" << std::endl;
+		std::cerr << "Es/N0 (dB):";
+		value sp = 0, np = 0;
+		for (int j = 0, k = 0; j < cons_rows; ++j) {
+			if (mod_bits > 3) {
+				for (int i = 0; i < comb_cols; ++i) {
+					cmplx hard(1, 0);
+					cmplx error = cons[cons_cols*j+comb_dist*i+comb_off] - hard;
+					sp += norm(hard);
+					np += norm(error);
+				}
+			} else {
+				for (int i = 0; i < cons_cols; ++i) {
+					code_type tmp[mod_bits];
+					mod_hard(tmp, cons[cons_cols*j+i]);
+					cmplx hard = mod_map(tmp);
+					cmplx error = cons[cons_cols*j+i] - hard;
+					sp += norm(hard);
+					np += norm(error);
+				}
+			}
+			value precision = sp / np;
+			// precision = 8;
+			value snr = DSP::decibel(precision);
+			std::cerr << " " << snr;
+			if (std::is_same<code_type, int8_t>::value && precision > 32)
+				precision = 32;
+			for (int i = 0; i < cons_cols; ++i) {
+				if (mod_bits > 3 && i % comb_dist == comb_off)
+					continue;
+				mod_soft(code+k, cons[cons_cols*j+i], precision);
+				k += mod_bits;
+			}
+		}
+		std::cerr << std::endl;
+		crc_bits = data_bits + 32;
+		for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
+			code[i] = 0;
+		shuffle(code);
+		polardec(nullptr, mesg, code, frozen_bits, code_order, parity_stride, first_parity);
+		int best = -1;
+		for (int k = 0; k < mesg_type::SIZE; ++k) {
+			crc1.reset();
+			for (int i = 0; i < crc_bits; ++i)
+				crc1(mesg[i].v[k] < 0);
+			if (crc1() == 0) {
+				best = k;
+				break;
+			}
+		}
+		if (best < 0) {
+			std::cerr << "payload decoding error." << std::endl;
+			return false;
+		}
+		for (int i = 0; i < data_bits; ++i)
+			CODE::set_le_bit(output_data, i, mesg[i].v[best] < 0);
+		CODE::Xorshift32 scrambler;
+		for (int i = 0; i < data_bytes; ++i)
+			output_data[i] ^= scrambler();
+		*msg = output_data;
+		len = data_bytes;
+		return true;
+	}
 };
