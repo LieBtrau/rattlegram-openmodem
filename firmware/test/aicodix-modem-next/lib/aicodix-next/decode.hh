@@ -88,7 +88,6 @@ struct Decoder
 	cmplx fdom[symbol_len], tdom[symbol_len];
 	value index[cols_max], phase[cols_max];
 	value cfo_rad, sfo_rad;
-	const uint32_t *frozen_bits;
 	int mod_bits;
 	int code_order;
 	int symbol_pos;
@@ -281,9 +280,8 @@ struct Decoder
 	{
 		if (!oper_mode)
 			return false;
-		int parity_stride = 0;
-		int first_parity = 0;
-		int data_bits = 0;
+		//int parity_stride = 0;
+		//int first_parity = 0;
 		int cons_rows = 0;
 		int comb_cols = 0;
 		int code_cols = 0;
@@ -294,10 +292,9 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 12; 
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
+			//parity_stride = 31;
+			//first_parity = 3;
+			//frozen_bits = frozen_4096_2147;
 			break;
 		case 23:
 			mod_bits = 2;
@@ -305,10 +302,9 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 12;
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
+			//parity_stride = 31;
+			//first_parity = 3;
+			//frozen_bits = frozen_4096_2147;
 			break;
 		case 24:
 			mod_bits = 3;//2;
@@ -316,10 +312,9 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 13;
 			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
+			//parity_stride = 31;
+			//first_parity = 5;
+			//frozen_bits = frozen_8192_4261;
 			break;
 		case 25:
 			mod_bits = 2;
@@ -327,10 +322,9 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 14;
 			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
+			//parity_stride = 31;
+			//first_parity = 9;
+			//frozen_bits = frozen_16384_8489;
 			break;
 		case 26:
 			mod_bits = 4;
@@ -338,10 +332,9 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 12;
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
+			//parity_stride = 31;
+			//first_parity = 3;
+			//frozen_bits = frozen_4096_2147;
 			break;
 		case 27:
 			mod_bits = 4;
@@ -349,10 +342,9 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 13;
 			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
+			//parity_stride = 31;
+			//first_parity = 5;
+			//frozen_bits = frozen_8192_4261;
 			break;
 		case 28:
 			mod_bits = 4;
@@ -360,10 +352,9 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 14;
 			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
+			//parity_stride = 31;
+			//first_parity = 9;
+			//frozen_bits = frozen_16384_8489;
 			break;
 		case 29:
 			mod_bits = 6;
@@ -371,10 +362,9 @@ struct Decoder
 			comb_cols = 16;
 			code_order = 13;
 			code_cols = 273;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
+			//parity_stride = 31;
+			//first_parity = 5;
+			//frozen_bits = frozen_8192_4261;
 			break;
 		case 30:
 			mod_bits = 6;
@@ -382,16 +372,14 @@ struct Decoder
 			comb_cols = 16;
 			code_order = 14;
 			code_cols = 273;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
+			//parity_stride = 31;
+			//first_parity = 9;
+			//frozen_bits = frozen_16384_8489;
 			break;
 		default:
 			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
 			return false;
 		}
-		int data_bytes = data_bits / 8;
 		int cons_cols = code_cols + comb_cols;
 		int comb_dist = comb_cols ? cons_cols / comb_cols : 1;
 		int comb_off = comb_cols ? comb_dist / 2 : 1;
@@ -502,11 +490,23 @@ struct Decoder
 			}
 		}
 		std::cerr << std::endl;
+		int data_bits = 1 << (code_order -1);
+		std::cerr << "data bits: " << data_bits << std::endl;
 		crc_bits = data_bits + 32;
 		for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
 			code[i] = 0;
 		shuffle(code);
-		polardec(nullptr, mesg, code, frozen_bits, code_order, parity_stride, first_parity);
+		switch(code_order) {
+		case 12:
+			polardec(nullptr, mesg, code, frozen_4096_2147, code_order, 31, 3);
+			break;
+		case 13:
+			polardec(nullptr, mesg, code, frozen_8192_4261, code_order, 31, 5);
+			break;
+		case 14:
+			polardec(nullptr, mesg, code, frozen_16384_8489, code_order, 31, 9);
+			break;
+		}
 		int best = -1;
 		for (int k = 0; k < mesg_type::SIZE; ++k) {
 			crc1.reset();
@@ -524,6 +524,7 @@ struct Decoder
 		for (int i = 0; i < data_bits; ++i)
 			CODE::set_le_bit(output_data, i, mesg[i].v[best] < 0);
 		CODE::Xorshift32 scrambler;
+		int data_bytes = data_bits / 8;
 		for (int i = 0; i < data_bytes; ++i)
 			output_data[i] ^= scrambler();
 		*msg = output_data;
