@@ -169,20 +169,6 @@ struct Decoder
 			return QuadratureAmplitudeModulation<64, cmplx, code_type>::soft(b, c, precision);
 		}
 	}
-	void shuffle(code_type *c)
-	{
-		switch (code_order) {
-		case 12:
-			shuffle_4096(c);
-			break;
-		case 13:
-			shuffle_8192(c);
-			break;
-		case 14:
-			shuffle_16384(c);
-			break;
-		}
-	}
 
 	const cmplx *next_sample()
 	{
@@ -495,15 +481,18 @@ struct Decoder
 		crc_bits = data_bits + 32;
 		for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
 			code[i] = 0;
-		shuffle(code);
+
 		switch(code_order) {
 		case 12:
+			shuffle_4096(code);
 			polardec(nullptr, mesg, code, frozen_4096_2147, code_order, 31, 3);
 			break;
 		case 13:
+			shuffle_8192(code);
 			polardec(nullptr, mesg, code, frozen_8192_4261, code_order, 31, 5);
 			break;
 		case 14:
+			shuffle_16384(code);
 			polardec(nullptr, mesg, code, frozen_16384_8489, code_order, 31, 9);
 			break;
 		}
