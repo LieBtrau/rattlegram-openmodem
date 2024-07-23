@@ -2,16 +2,17 @@
 #include <cstdint>
 
 typedef struct {
-    int oper_mode;
-    int band_width;
-    int mod_bits;
-    int cons_rows;
-    int comb_cols;
-    int code_order;
+    int oper_mode;  // Operating mode
+    int band_width; // Occupied Bandwidth
+    int mod_bits;   // Number of bits per symbol
+    int cons_rows;  
+    int comb_cols;  
+    int code_order; // Code order for polar codes
     int code_cols;
     int reserved_tones;
 } modem_config_t;
 
+/// @brief Modem configurations
 static const modem_config_t modem_configs[] = 
 {
     { 0, 1600, 0,0,0,0,256,0},
