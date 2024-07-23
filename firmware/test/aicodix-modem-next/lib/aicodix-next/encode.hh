@@ -25,6 +25,7 @@ Copyright 2021 Ahmet Inan <inan@aicodix.de>
 #include "polar_tables.hh"
 #include "polar_parity_aided.hh"
 #include "bose_chaudhuri_hocquenghem_encoder.hh"
+#include "modem_config.hh"
 
 template <typename value, typename cmplx, int rate>
 struct Encoder
@@ -294,108 +295,23 @@ struct Encoder
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
 			0b110101001, 0b000011111, 0b110000111, 0b110110001}){}
 			
-	bool configure(int freq_off, uint64_t call_sign, int oper_mode)
+	bool configure(int freq_off, uint64_t call_sign, const modem_config_t* modem_config)
 	{
-		int code_cols = 0;
-		int comb_cols = 0;
-		int reserved_tones = 0;
-		int band_width;
 		if (freq_off % 50)
 		{
 			std::cerr << "Frequency offset must be divisible by 50." << std::endl;
 			return false;
 		}
-		switch (oper_mode) {
-		case 0:
-			//meta_data only
-			code_cols = 256;
-			band_width = 1600;
-			break;
-		case 22:
-			// cons_rows = cons_bits / mod_bits / cons_cols;
-			band_width = 1600;
-			mod_bits = 3;
-			cons_rows = 3;
-			comb_cols = 0;
-			code_order = 12; 
-			code_cols = 256;
-			reserved_tones = 0;
-			break;
-		case 23:
-			band_width = 1600;
-			mod_bits = 2;
-			cons_rows = 8;
-			comb_cols = 0;
-			code_order = 12; 
-			code_cols = 256;
-			reserved_tones = 0;
-			break;
-		case 24:
-			band_width = 1600;
-			mod_bits = 3;//2;
-			cons_rows = 10;//16;
-			comb_cols = 0;
-			code_order = 13;
-			code_cols = 256;
-			reserved_tones = 0;
-			break;
-		case 25:
-			band_width = 1600;
-			mod_bits = 2;
-			cons_rows = 32;
-			comb_cols = 0;
-			code_order = 14;
-			code_cols = 256;
-			reserved_tones = 0;
-			break;
-		case 26:
-			band_width = 1700;
-			mod_bits = 4;
-			cons_rows = 4;
-			comb_cols = 8;
-			code_order = 12;
-			code_cols = 256;
-			reserved_tones = 8;
-			break;
-		case 27:
-			band_width = 1700;
-			mod_bits = 4;
-			cons_rows = 8;
-			comb_cols = 8;
-			code_order = 13;
-			code_cols = 256;
-			reserved_tones = 8;
-			break;
-		case 28:
-			band_width = 1700;
-			mod_bits = 4;
-			cons_rows = 16;
-			comb_cols = 8;
-			code_order = 14;
-			code_cols = 256;
-			reserved_tones = 8;
-			break;
-		case 29:
-			band_width = 1900;
-			mod_bits = 6;
-			cons_rows = 5;
-			comb_cols = 16;
-			code_order = 13;
-			code_cols = 273;
-			reserved_tones = 15;
-			break;
-		case 30:
-			band_width = 1900;
-			mod_bits = 6;
-			cons_rows = 10;
-			comb_cols = 16;
-			code_order = 14;
-			code_cols = 273;
-			reserved_tones = 15;
-			break;
-		default:
-			return false;
-		}
+		oper_mode = modem_config->oper_mode;
+		int band_width = modem_config->band_width;
+		mod_bits = modem_config->mod_bits;
+		cons_rows = modem_config->cons_rows;
+		int comb_cols = modem_config->comb_cols;
+		code_order = modem_config->code_order;
+		int code_cols = modem_config->code_cols;
+		int reserved_tones = modem_config->reserved_tones;
+
+
 		if (freq_off < band_width / 2 - rate / 2 || freq_off > rate / 2 - band_width / 2)
 		{
 			std::cerr << "Unsupported frequency offset." << std::endl;

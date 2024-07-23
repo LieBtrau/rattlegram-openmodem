@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "encode.hh"
 #include "decode.hh"
+#include "modem_config.hh"
 #include <queue>
 
 typedef float value;
@@ -42,8 +43,8 @@ void setup()
 	encoder->setSampleSink(sampleSink);
 	decoder->setSampleSource(sampleSource);
 	uint64_t call_sign = 1, rx_call_sign = 0;
-	int oper_mode = 22;
-	encoder->configure(1600, call_sign, oper_mode);
+	const modem_config_t* modem_config = &modem_configs[1];
+	encoder->configure(1600, call_sign, modem_config);
 	outputBuffer = new int16_t[encoder->symbol_len + encoder->guard_len];
 
 	uint32_t startTime = millis();
@@ -52,7 +53,7 @@ void setup()
 	//ESP_LOGI(TAG, "Creating correlator block");
 	encoder->schmidl_cox();
 	//ESP_LOGI(TAG, "Creating metadata block");
-	encoder->meta_data((call_sign << 8) | oper_mode);
+	encoder->meta_data((call_sign << 8) | modem_config->oper_mode);
 	// Payload
 	uint8_t msg[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \
 	labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip \
