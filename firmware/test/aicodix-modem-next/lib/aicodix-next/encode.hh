@@ -486,8 +486,11 @@ struct Encoder
 
 	bool addPacket(uint8_t *data, int len)
 	{
-		if (len > data_max)
+		if (len > (1 << (code_order - 4)))
+		{
+			std::cerr << "Packet too large." << std::endl;
 			return false;
+		}
 		std::memset(input_data, 0, sizeof(input_data));
 		std::memcpy(input_data, data, len);
 		int data_bytes = data_bits / 8;

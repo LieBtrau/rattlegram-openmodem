@@ -54,9 +54,16 @@ void setup()
 	//ESP_LOGI(TAG, "Creating metadata block");
 	encoder->meta_data((call_sign << 8) | oper_mode);
 	// Payload
-	uint8_t msg[] = {'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!', '\0'};
+	uint8_t msg[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \
+	labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip \
+	ex ea commodo consequat. Duis aute irure ";//dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat \
+	nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 	//ESP_LOGI(TAG, "Creating payload block");
-	encoder->addPacket(msg, sizeof(msg));
+	if(!encoder->addPacket(msg, sizeof(msg)))
+	{
+		ESP_LOGE(TAG, "Failed to add packet");
+		return;
+	}
 	// End of the transmission
 	//ESP_LOGI(TAG, "Creating tail block");
 	encoder->tail_block();

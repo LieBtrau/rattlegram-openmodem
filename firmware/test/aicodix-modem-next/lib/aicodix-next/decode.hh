@@ -266,8 +266,6 @@ struct Decoder
 	{
 		if (!oper_mode)
 			return false;
-		//int parity_stride = 0;
-		//int first_parity = 0;
 		int cons_rows = 0;
 		int comb_cols = 0;
 		int code_cols = 0;
@@ -278,9 +276,6 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 12; 
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 3;
-			//frozen_bits = frozen_4096_2147;
 			break;
 		case 23:
 			mod_bits = 2;
@@ -288,9 +283,6 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 12;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 3;
-			//frozen_bits = frozen_4096_2147;
 			break;
 		case 24:
 			mod_bits = 3;//2;
@@ -298,9 +290,6 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 13;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 5;
-			//frozen_bits = frozen_8192_4261;
 			break;
 		case 25:
 			mod_bits = 2;
@@ -308,9 +297,6 @@ struct Decoder
 			comb_cols = 0;
 			code_order = 14;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 9;
-			//frozen_bits = frozen_16384_8489;
 			break;
 		case 26:
 			mod_bits = 4;
@@ -318,9 +304,6 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 12;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 3;
-			//frozen_bits = frozen_4096_2147;
 			break;
 		case 27:
 			mod_bits = 4;
@@ -328,9 +311,6 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 13;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 5;
-			//frozen_bits = frozen_8192_4261;
 			break;
 		case 28:
 			mod_bits = 4;
@@ -338,9 +318,6 @@ struct Decoder
 			comb_cols = 8;
 			code_order = 14;
 			code_cols = 256;
-			//parity_stride = 31;
-			//first_parity = 9;
-			//frozen_bits = frozen_16384_8489;
 			break;
 		case 29:
 			mod_bits = 6;
@@ -348,9 +325,6 @@ struct Decoder
 			comb_cols = 16;
 			code_order = 13;
 			code_cols = 273;
-			//parity_stride = 31;
-			//first_parity = 5;
-			//frozen_bits = frozen_8192_4261;
 			break;
 		case 30:
 			mod_bits = 6;
@@ -358,9 +332,6 @@ struct Decoder
 			comb_cols = 16;
 			code_order = 14;
 			code_cols = 273;
-			//parity_stride = 31;
-			//first_parity = 9;
-			//frozen_bits = frozen_16384_8489;
 			break;
 		default:
 			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
@@ -484,14 +455,17 @@ struct Decoder
 
 		switch(code_order) {
 		case 12:
+			// 256 bytes
 			shuffle_4096(code);
 			polardec(nullptr, mesg, code, frozen_4096_2147, code_order, 31, 3);
 			break;
 		case 13:
+			// 512 bytes
 			shuffle_8192(code);
 			polardec(nullptr, mesg, code, frozen_8192_4261, code_order, 31, 5);
 			break;
 		case 14:
+			// 1024 bytes
 			shuffle_16384(code);
 			polardec(nullptr, mesg, code, frozen_16384_8489, code_order, 31, 9);
 			break;
