@@ -59,7 +59,6 @@ struct Encoder
 	cmplx prev[cols_max];
 	value papr_min, papr_max;
 	int16_t samples[symbol_len + guard_len];
-	int data_bits = 0;
 	int mod_bits;
 	int oper_mode;
 	int code_order; // Polar encoder order : 2**code_order = number of data bits
@@ -68,11 +67,8 @@ struct Encoder
 	int cons_rows;
 	int mls0_off;
 	int mls1_off;
-	int parity_stride = 0;
-	int first_parity = 0;
 	int comb_dist = 1;
 	int comb_off = 1;
-	const uint32_t *frozen_bits = nullptr;
 	void (*sampleSink)(int16_t samples[], int count) { nullptr }; 
 
 	void setSampleSink(void (*sink)(int16_t samples[], int count))
@@ -290,27 +286,6 @@ struct Encoder
 		return 2;
 	}
 
-	/**
-	 * @brief Interleaving data
-	 * @note This is used to spread the errors in the data to make it more robust against burst errors
-	 * @note [Interleaved codes](https://en.wikipedia.org/wiki/Burst_error-correcting_code#Interleaved_codes)
-	 * @param c 
-	 */
-	void shuffle(code_type *c)
-	{
-		switch (code_order) {
-		case 12:
-			shuffle_4096(c);
-			break;
-		case 13:
-			shuffle_8192(c);
-			break;
-		case 14:
-			shuffle_16384(c);
-			break;
-		}
-	}
-
 	Encoder() : crc0(0xA8F4), crc1(0x8F6E37A0), bchenc({
 			0b100011101, 0b101110111, 0b111110011, 0b101101001,
 			0b110111101, 0b111100111, 0b100101011, 0b111010111,
@@ -344,10 +319,6 @@ struct Encoder
 			comb_cols = 0;
 			code_order = 12; 
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
 			reserved_tones = 0;
 			break;
 		case 23:
@@ -357,10 +328,6 @@ struct Encoder
 			comb_cols = 0;
 			code_order = 12; 
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
 			reserved_tones = 0;
 			break;
 		case 24:
@@ -370,10 +337,6 @@ struct Encoder
 			comb_cols = 0;
 			code_order = 13;
 			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
 			reserved_tones = 0;
 			break;
 		case 25:
@@ -383,10 +346,6 @@ struct Encoder
 			comb_cols = 0;
 			code_order = 14;
 			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
 			reserved_tones = 0;
 			break;
 		case 26:
@@ -396,10 +355,6 @@ struct Encoder
 			comb_cols = 8;
 			code_order = 12;
 			code_cols = 256;
-			data_bits = 2048;
-			parity_stride = 31;
-			first_parity = 3;
-			frozen_bits = frozen_4096_2147;
 			reserved_tones = 8;
 			break;
 		case 27:
@@ -409,10 +364,6 @@ struct Encoder
 			comb_cols = 8;
 			code_order = 13;
 			code_cols = 256;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
 			reserved_tones = 8;
 			break;
 		case 28:
@@ -422,10 +373,6 @@ struct Encoder
 			comb_cols = 8;
 			code_order = 14;
 			code_cols = 256;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
 			reserved_tones = 8;
 			break;
 		case 29:
@@ -435,10 +382,6 @@ struct Encoder
 			comb_cols = 16;
 			code_order = 13;
 			code_cols = 273;
-			data_bits = 4096;
-			parity_stride = 31;
-			first_parity = 5;
-			frozen_bits = frozen_8192_4261;
 			reserved_tones = 15;
 			break;
 		case 30:
@@ -448,10 +391,6 @@ struct Encoder
 			comb_cols = 16;
 			code_order = 14;
 			code_cols = 273;
-			data_bits = 8192;
-			parity_stride = 31;
-			first_parity = 9;
-			frozen_bits = frozen_16384_8489;
 			reserved_tones = 15;
 			break;
 		default:
@@ -493,6 +432,7 @@ struct Encoder
 		}
 		std::memset(input_data, 0, sizeof(input_data));
 		std::memcpy(input_data, data, len);
+		int data_bits = 1 << (code_order -1);
 		int data_bytes = data_bits / 8;
 		// Scramble the data
 		CODE::Xorshift32 scrambler;
@@ -507,10 +447,28 @@ struct Encoder
 			crc1(input_data[i]);
 		for (int i = 0; i < 32; ++i)
 			mesg[i+data_bits] = nrz((crc1()>>i)&1);
-		// Calculate polar codes (adds error correction)
-		polarenc(code, mesg, frozen_bits, code_order, parity_stride, first_parity);
-		// data interleaving
-		shuffle(code);
+
+
+		/**
+		 * @brief Interleaving data
+		 * @note This is used to spread the errors in the data to make it more robust against burst errors
+		 * @note [Interleaved codes](https://en.wikipedia.org/wiki/Burst_error-correcting_code#Interleaved_codes)
+		 * @param c 
+		 */
+		switch(code_order) {
+		case 12:
+			polarenc(code, mesg, frozen_4096_2147, code_order, 31, 3);
+			shuffle_4096(code);
+			break;
+		case 13:
+			polarenc(code, mesg, frozen_8192_4261, code_order, 31, 5);
+			shuffle_8192(code);
+			break;
+		case 14:
+			polarenc(code, mesg, frozen_16384_8489, code_order, 31, 9);
+			shuffle_16384(code);
+			break;
+		}
 
 		// Generate the OFDM symbols
 		for (int i = 0; i < cons_cols; ++i)
