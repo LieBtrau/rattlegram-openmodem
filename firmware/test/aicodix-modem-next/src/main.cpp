@@ -91,7 +91,12 @@ void setup()
 	ESP_LOGI(TAG, "Metadata: %lu", rx_call_sign);
 	uint8_t *dec_msg = nullptr;
 	int len;
-	if (decoder->fetch(&dec_msg, len))
+	if(!decoder->demodulate())
+	{
+		ESP_LOGE(TAG, "Demodulation failed");
+		return;
+	}
+	if (decoder->decode(&dec_msg, len))
 	{
 		ESP_LOGI(TAG, "Message: %s", dec_msg);
 		ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);

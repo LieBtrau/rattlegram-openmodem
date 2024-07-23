@@ -262,7 +262,7 @@ struct Decoder
 		return true;
 	}
 
-	bool fetch(uint8_t** msg, int& len)
+	bool demodulate()
 	{
 		if (!oper_mode)
 			return false;
@@ -447,11 +447,16 @@ struct Decoder
 			}
 		}
 		std::cerr << std::endl;
+		for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
+			code[i] = 0;
+		return true;
+	}	
+
+	bool decode(uint8_t** msg, int& len)
+	{
 		int data_bits = 1 << (code_order -1);
 		std::cerr << "data bits: " << data_bits << std::endl;
 		crc_bits = data_bits + 32;
-		for (int i = code_cols * cons_rows * mod_bits; i < bits_max; ++i)
-			code[i] = 0;
 
 		switch(code_order) {
 		case 12:
