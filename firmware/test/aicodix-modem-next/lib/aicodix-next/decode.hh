@@ -193,14 +193,11 @@ struct Decoder
 
 	bool feed()
 	{
-		int ctr = 0;
 		do {
 			buf = next_sample();
 			if(!buf)
 				return false;
-			++ctr;
 		} while (!correlator(buf));
-		std::cerr << "correlator: " << ctr << std::endl;
 
 		symbol_pos = correlator.symbol_pos;
 		cfo_rad = correlator.cfo_rad;
