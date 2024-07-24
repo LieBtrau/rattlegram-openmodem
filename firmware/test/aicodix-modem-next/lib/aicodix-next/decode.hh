@@ -31,6 +31,7 @@ namespace DSP { using std::abs; using std::min; using std::cos; using std::sin; 
 #include "qam.hh"
 #include "polar_tables.hh"
 #include "polar_parity_aided.hh"
+#include "modem_config.hh"
 
 void base37_decoder(char *str, long long int val, int len)
 {
@@ -191,7 +192,7 @@ struct Decoder
 		blockdc.samples(filter_len);
 	}
 
-	bool feed()
+	bool synchronize()
 	{
 		do {
 			buf = next_sample();
@@ -263,76 +264,18 @@ struct Decoder
 	{
 		if (!oper_mode)
 			return false;
-		int cons_rows = 0;
-		int comb_cols = 0;
-		int code_cols = 0;
-		switch (oper_mode) {
-		case 22:
-			mod_bits = 3;
-			cons_rows = 3;
-			comb_cols = 0;
-			code_order = 12; 
-			code_cols = 256;
-			break;
-		case 23:
-			mod_bits = 2;
-			cons_rows = 8;
-			comb_cols = 0;
-			code_order = 12;
-			code_cols = 256;
-			break;
-		case 24:
-			mod_bits = 3;//2;
-			cons_rows = 10;//16;
-			comb_cols = 0;
-			code_order = 13;
-			code_cols = 256;
-			break;
-		case 25:
-			mod_bits = 2;
-			cons_rows = 32;
-			comb_cols = 0;
-			code_order = 14;
-			code_cols = 256;
-			break;
-		case 26:
-			mod_bits = 4;
-			cons_rows = 4;
-			comb_cols = 8;
-			code_order = 12;
-			code_cols = 256;
-			break;
-		case 27:
-			mod_bits = 4;
-			cons_rows = 8;
-			comb_cols = 8;
-			code_order = 13;
-			code_cols = 256;
-			break;
-		case 28:
-			mod_bits = 4;
-			cons_rows = 16;
-			comb_cols = 8;
-			code_order = 14;
-			code_cols = 256;
-			break;
-		case 29:
-			mod_bits = 6;
-			cons_rows = 5;
-			comb_cols = 16;
-			code_order = 13;
-			code_cols = 273;
-			break;
-		case 30:
-			mod_bits = 6;
-			cons_rows = 10;
-			comb_cols = 16;
-			code_order = 14;
-			code_cols = 273;
-			break;
-		default:
-			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
-			return false;
+		int cons_rows, comb_cols, code_cols;
+		for(int i=0; i<sizeof(modem_configs)/sizeof(modem_configs[0]); i++)
+		{
+			if(modem_configs[i].oper_mode == oper_mode)
+			{
+				mod_bits = modem_configs[i].mod_bits;
+				cons_rows = modem_configs[i].cons_rows;
+				comb_cols = modem_configs[i].comb_cols;
+				code_order = modem_configs[i].code_order;
+				code_cols = modem_configs[i].code_cols;
+				break;
+			}
 		}
 		int cons_cols = code_cols + comb_cols;
 		int comb_dist = comb_cols ? cons_cols / comb_cols : 1;

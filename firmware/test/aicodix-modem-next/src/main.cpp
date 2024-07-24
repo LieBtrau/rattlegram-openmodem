@@ -72,7 +72,7 @@ void setup()
 
 	// Start of the reception
 	startTime = millis();
-	if (!decoder->feed())
+	if (!decoder->synchronize())
 	{
 		ESP_LOGE(TAG, "Feed failed");
 		return;
