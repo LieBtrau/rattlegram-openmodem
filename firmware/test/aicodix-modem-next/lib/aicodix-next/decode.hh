@@ -213,6 +213,12 @@ struct Decoder
 		// Fill buffer with samples
 		for (int i = 0; i < symbol_len; ++i)
 			tdom[i] = buf[i+symbol_pos+extended_len] * osc();
+
+		for (int i = 0; i < symbol_pos+extended_len; ++i)
+		{
+			correlator(buf = next_sample());
+		}
+
 		// Forward FFT
 		fwd(fdom, tdom);
 		// Ordered Statistics Decoder
@@ -257,6 +263,7 @@ struct Decoder
 			return false;
 		}
 		call_sign = meta_data >> 8;
+
 		return true;
 	}
 
@@ -282,11 +289,12 @@ struct Decoder
 		int comb_off = comb_cols ? comb_dist / 2 : 1;
 		int code_off = - cons_cols / 2;
 
-		for (int i = 0; i < symbol_pos+extended_len; ++i)
-		{
-			buf = next_sample();
-			correlator(buf);
-		}
+		std::cerr << "modulation bits: " << mod_bits << std::endl;
+		// Print first 10 samples.
+		std::cerr << "samples: ";
+		for (int i = 0; i < 10; ++i)
+			std::cerr << buf[i].real() << " ";
+
 		for (int i = 0; i < symbol_len; ++i)
 			tdom[i] = buf[i] * osc();
 		for (int i = 0; i < guard_len; ++i)
@@ -297,10 +305,10 @@ struct Decoder
 		std::cerr << "demod " << cons_rows << " rows" << std::endl;
 		CODE::MLS seq0(mls0_poly);
 		for (int j = 0; j < cons_rows; ++j) {
+			// Skip guard interval
 			for (int i = 0; i < extended_len; ++i)
 			{
-				buf = next_sample();
-				correlator(buf);
+				correlator(buf = next_sample());
 			}
 			for (int i = 0; i < symbol_len; ++i)
 				tdom[i] = buf[i] * osc();

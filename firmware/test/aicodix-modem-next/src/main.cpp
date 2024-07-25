@@ -47,29 +47,33 @@ void setup()
 	encoder->configure(1600, call_sign, modem_config);
 	outputBuffer = new int16_t[encoder->symbol_len + encoder->guard_len];
 
+	uint8_t msg1[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \
+		labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip \
+		ex ea commodo consequat. Duis aute irure ";
+
+	uint8_t msg2[] = "dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat \
+		nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+
 	for (int i = 0; i < 2; i++)
 	{
 		uint32_t startTime = millis();
 		// ESP_LOGI(TAG, "Creating pilot block");
-		encoder->pilot_block();
+		//encoder->pilot_block();
 		// ESP_LOGI(TAG, "Creating correlator block");
 		encoder->schmidl_cox();
 		// ESP_LOGI(TAG, "Creating metadata block");
 		encoder->meta_data((call_sign << 8) | modem_config->oper_mode);
+		//encoder->pilot_block();
 		// Payload
-		uint8_t msg[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \
-		labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip \
-		ex ea commodo consequat. Duis aute irure "; //dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat \
-		nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
-		// ESP_LOGI(TAG, "Creating payload block");
-		if (!encoder->addPacket(msg, sizeof(msg)))
+		ESP_LOGI(TAG, "Creating payload block");
+		if (!encoder->addPacket(i==0 ? msg1 : msg2, i==0 ? sizeof(msg1): sizeof(msg2)))
 		{
 			ESP_LOGE(TAG, "Failed to add packet");
 			return;
 		}
 		// End of the transmission
 		// ESP_LOGI(TAG, "Creating tail block");
-		encoder->tail_block();
+		//encoder->tail_block();
 		// ESP_LOGI(TAG, "Time to build a packet: %d ms", millis() - startTime);
 
 		// Start of the reception
