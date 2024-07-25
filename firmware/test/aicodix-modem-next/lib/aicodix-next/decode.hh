@@ -290,11 +290,6 @@ struct Decoder
 		int code_off = - cons_cols / 2;
 
 		std::cerr << "modulation bits: " << mod_bits << std::endl;
-		// Print first 10 samples.
-		std::cerr << "samples: ";
-		for (int i = 0; i < 10; ++i)
-			std::cerr << buf[i].real() << " ";
-
 		for (int i = 0; i < symbol_len; ++i)
 			tdom[i] = buf[i] * osc();
 		for (int i = 0; i < guard_len; ++i)
