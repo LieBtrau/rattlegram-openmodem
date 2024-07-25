@@ -54,8 +54,6 @@ void setup()
 	uint8_t msg2[] = "dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat \
 		nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
-	for (int i = 0; i < 2; i++)
-	{
 		uint32_t startTime = millis();
 		// ESP_LOGI(TAG, "Creating pilot block");
 		//encoder->pilot_block();
@@ -66,7 +64,12 @@ void setup()
 		//encoder->pilot_block();
 		// Payload
 		ESP_LOGI(TAG, "Creating payload block");
-		if (!encoder->addPacket(i==0 ? msg1 : msg2, i==0 ? sizeof(msg1): sizeof(msg2)))
+		if (!encoder->addPacket(msg1, sizeof(msg1)))
+		{
+			ESP_LOGE(TAG, "Failed to add packet");
+			return;
+		}
+		if (!encoder->addPacket(msg2, sizeof(msg2)))
 		{
 			ESP_LOGE(TAG, "Failed to add packet");
 			return;
@@ -98,21 +101,23 @@ void setup()
 		ESP_LOGI(TAG, "Metadata: %lu", rx_call_sign);
 		uint8_t *dec_msg = nullptr;
 		int len;
-		if (!decoder->demodulate())
+		for(int i=0; i<2; i++)
 		{
-			ESP_LOGE(TAG, "Demodulation failed");
-			return;
+			if (!decoder->demodulate())
+			{
+				ESP_LOGE(TAG, "Demodulation failed");
+				return;
+			}
+			if (decoder->decode(&dec_msg, len))
+			{
+				ESP_LOGI(TAG, "Message: %s", dec_msg);
+				ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
+			}
+			else
+			{
+				ESP_LOGE(TAG, "Message not detected");
+			}
 		}
-		if (decoder->decode(&dec_msg, len))
-		{
-			ESP_LOGI(TAG, "Message: %s", dec_msg);
-			ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
-		}
-		else
-		{
-			ESP_LOGE(TAG, "Message not detected");
-		}
-	}
 }
 
 void loop()
