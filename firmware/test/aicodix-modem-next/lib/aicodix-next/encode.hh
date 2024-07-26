@@ -30,6 +30,8 @@ Copyright 2021 Ahmet Inan <inan@aicodix.de>
 template <typename value, typename cmplx, int rate>
 struct Encoder
 {
+
+private:
 	typedef int8_t code_type;
 	static const int symbol_len = (1280 * rate) / 8000;
 	static const int guard_len = symbol_len / 8;
@@ -71,11 +73,6 @@ struct Encoder
 	int comb_dist = 1;
 	int comb_off = 1;
 	void (*sampleSink)(int16_t samples[], int count) { nullptr }; 
-
-	void setSampleSink(void (*sink)(int16_t samples[], int count))
-	{
-		sampleSink = sink;
-	}
 
 	static int bin(int carrier)
 	{
@@ -189,75 +186,6 @@ struct Encoder
 		}
 	}
 
-	/**
-	 * @brief Generate the pilot block
-	 * @note This doesn't seem to be used for synchronization.  Is it to open the squelch?
-	 * @note You need to send it only once, at the beginning of the transmission.
-	 */
-	void pilot_block()
-	{
-		CODE::MLS seq2(mls2_poly);
-		// Calculate the scaling factor for the pilot block
-		value code_fac = std::sqrt(value(symbol_len) / value(cons_cols));
-		std::memset(fdom, 0, sizeof(fdom));
-		for (int i = code_off; i < code_off + cons_cols; ++i)
-		{
-			fdom[bin(i)] = code_fac * nrz(seq2());
-		}
-		symbol();
-	}
-
-	/**
-	 * @brief Synchronization fymbol
-	 * [Robust Frequency and Timing Synchronization for OFDM](https://home.mit.bme.hu/~kollar/papers/Schmidl2.pdf)
-	 * 
-	 * To be repeated every symbol.
-	 */
-	void schmidl_cox()
-	{
-		CODE::MLS seq0(mls0_poly);
-		value mls0_fac = std::sqrt(value(2 * symbol_len) / value(mls0_len));
-		std::memset(fdom, 0, sizeof(fdom));
-		fdom[bin(mls0_off-2)] = mls0_fac;
-		for (int i = 0; i < mls0_len; ++i)
-			fdom[bin(2*i+mls0_off)] = nrz(seq0());
-		for (int i = 0; i < mls0_len; ++i)
-			fdom[bin(2*i+mls0_off)] *= fdom[bin(2*(i-1)+mls0_off)];
-		symbol(false);
-	}
-
-	void meta_data(uint64_t md)
-	{
-		uint8_t data[9] = { 0 }, parity[23] = { 0 };
-		for (int i = 0; i < 55; ++i)
-			CODE::set_be_bit(data, i, (md>>i)&1);
-		crc0.reset();
-		uint16_t cs = crc0(md << 9);
-		for (int i = 0; i < 16; ++i)
-			CODE::set_be_bit(data, i+55, (cs>>i)&1);
-		bchenc(data, parity);
-		CODE::MLS seq1(mls1_poly);
-		value cons_fac = std::sqrt(value(symbol_len) / value(cons_cols));
-		for (int i = 0; i < symbol_len; ++i)
-			fdom[i] = 0;
-		fdom[bin(mls1_off-1)] = cons_fac;
-		for (int i = 0; i < 71; ++i)
-			fdom[bin(i+mls1_off)] = nrz(CODE::get_be_bit(data, i));
-		for (int i = 71; i < mls1_len; ++i)
-			fdom[bin(i+mls1_off)] = nrz(CODE::get_be_bit(parity, i-71));
-		for (int i = 0; i < mls1_len; ++i)
-			fdom[bin(i+mls1_off)] *= fdom[bin(i-1+mls1_off)];
-		for (int i = 0; i < mls1_len; ++i)
-			fdom[bin(i+mls1_off)] *= nrz(seq1());
-		if (oper_mode > 25) {
-			for (int i = code_off; i < code_off + cons_cols; ++i) {
-				if (i == mls1_off-1)
-					i += mls1_len + 1;
-				fdom[bin(i)] = cons_fac * nrz(seq1());
-			}
-		}
-		symbol();
-	}
 	cmplx mod_map(code_type *b)
 	{
 		switch (mod_bits) {
@@ -286,7 +214,8 @@ struct Encoder
 		}
 		return 2;
 	}
-
+			
+public:
 	Encoder() : crc0(0xA8F4), crc1(0x8F6E37A0), bchenc({
 			0b100011101, 0b101110111, 0b111110011, 0b101101001,
 			0b110111101, 0b111100111, 0b100101011, 0b111010111,
@@ -294,50 +223,6 @@ struct Encoder
 			0b100011011, 0b100111111, 0b110001101, 0b100101101,
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
 			0b110101001, 0b000011111, 0b110000111, 0b110110001}){}
-			
-	bool configure(int freq_off, uint64_t call_sign, const modem_config_t* modem_config)
-	{
-		if (freq_off % 50)
-		{
-			std::cerr << "Frequency offset must be divisible by 50." << std::endl;
-			return false;
-		}
-		oper_mode = modem_config->oper_mode;
-		int band_width = modem_config->band_width;
-		mod_bits = modem_config->mod_bits;
-		cons_rows = modem_config->cons_rows;
-		int comb_cols = modem_config->comb_cols;
-		code_order = modem_config->code_order;
-		int code_cols = modem_config->code_cols;
-		int reserved_tones = modem_config->reserved_tones;
-
-
-		if (freq_off < band_width / 2 - rate / 2 || freq_off > rate / 2 - band_width / 2)
-		{
-			std::cerr << "Unsupported frequency offset." << std::endl;
-			return false;
-		}
-		int offset = (freq_off * symbol_len) / rate;
-		mls0_off = offset - mls0_len + 1;
-		mls1_off = offset - mls1_len / 2;
-		cons_cols = code_cols + comb_cols;
-		code_off = offset - cons_cols / 2;
-		if (oper_mode > 0) {
-			comb_dist = comb_cols ? cons_cols / comb_cols : 1;
-			comb_off = comb_cols ? comb_dist / 2 : 1;
-			if (reserved_tones) {
-				value kern_fac = 1 / value(10 * reserved_tones);
-				for (int i = 0, j = code_off - reserved_tones / 2; i < reserved_tones; ++i, ++j) {
-					if (j == code_off)
-						j += cons_cols;
-					fdom[bin(j)] = kern_fac;
-				}
-				bwd(kern, fdom);
-			}
-		}
-		papr_min = 1000, papr_max = -1000;
-		return true;
-	}
 
 	bool addPacket(uint8_t *data, int len)
 	{
@@ -419,6 +304,135 @@ struct Encoder
 		std::memset(fdom, 0, sizeof(fdom));
 		symbol();
 	}
+
+	bool configure(int freq_off, uint64_t call_sign, const modem_config_t* modem_config)
+	{
+		if (freq_off % 50)
+		{
+			std::cerr << "Frequency offset must be divisible by 50." << std::endl;
+			return false;
+		}
+		oper_mode = modem_config->oper_mode;
+		int band_width = modem_config->band_width;
+		mod_bits = modem_config->mod_bits;
+		cons_rows = modem_config->cons_rows;
+		int comb_cols = modem_config->comb_cols;
+		code_order = modem_config->code_order;
+		int code_cols = modem_config->code_cols;
+		int reserved_tones = modem_config->reserved_tones;
+
+
+		if (freq_off < band_width / 2 - rate / 2 || freq_off > rate / 2 - band_width / 2)
+		{
+			std::cerr << "Unsupported frequency offset." << std::endl;
+			return false;
+		}
+		int offset = (freq_off * symbol_len) / rate;
+		mls0_off = offset - mls0_len + 1;
+		mls1_off = offset - mls1_len / 2;
+		cons_cols = code_cols + comb_cols;
+		code_off = offset - cons_cols / 2;
+		if (oper_mode > 0) {
+			comb_dist = comb_cols ? cons_cols / comb_cols : 1;
+			comb_off = comb_cols ? comb_dist / 2 : 1;
+			if (reserved_tones) {
+				value kern_fac = 1 / value(10 * reserved_tones);
+				for (int i = 0, j = code_off - reserved_tones / 2; i < reserved_tones; ++i, ++j) {
+					if (j == code_off)
+						j += cons_cols;
+					fdom[bin(j)] = kern_fac;
+				}
+				bwd(kern, fdom);
+			}
+		}
+		papr_min = 1000, papr_max = -1000;
+		return true;
+	}
+
+	/**
+	 * @brief Generate the pilot block
+	 * @note This doesn't seem to be used for synchronization.  Is it to open the squelch?
+	 * @note You need to send it only once, at the beginning of the transmission.
+	 */
+	void pilot_block()
+	{
+		CODE::MLS seq2(mls2_poly);
+		// Calculate the scaling factor for the pilot block
+		value code_fac = std::sqrt(value(symbol_len) / value(cons_cols));
+		std::memset(fdom, 0, sizeof(fdom));
+		for (int i = code_off; i < code_off + cons_cols; ++i)
+		{
+			fdom[bin(i)] = code_fac * nrz(seq2());
+		}
+		symbol();
+	}
+
+	/**
+	 * @brief Synchronization fymbol
+	 * [Robust Frequency and Timing Synchronization for OFDM](https://home.mit.bme.hu/~kollar/papers/Schmidl2.pdf)
+	 * 
+	 * To be repeated every symbol.
+	 */
+	void schmidl_cox()
+	{
+		CODE::MLS seq0(mls0_poly);
+		value mls0_fac = std::sqrt(value(2 * symbol_len) / value(mls0_len));
+		std::memset(fdom, 0, sizeof(fdom));
+		fdom[bin(mls0_off-2)] = mls0_fac;
+		for (int i = 0; i < mls0_len; ++i)
+			fdom[bin(2*i+mls0_off)] = nrz(seq0());
+		for (int i = 0; i < mls0_len; ++i)
+			fdom[bin(2*i+mls0_off)] *= fdom[bin(2*(i-1)+mls0_off)];
+		symbol(false);
+	}
+
+	void meta_data(uint64_t md)
+	{
+		uint8_t data[9] = { 0 }, parity[23] = { 0 };
+		for (int i = 0; i < 55; ++i)
+			CODE::set_be_bit(data, i, (md>>i)&1);
+		crc0.reset();
+		uint16_t cs = crc0(md << 9);
+		for (int i = 0; i < 16; ++i)
+			CODE::set_be_bit(data, i+55, (cs>>i)&1);
+		bchenc(data, parity);
+		CODE::MLS seq1(mls1_poly);
+		value cons_fac = std::sqrt(value(symbol_len) / value(cons_cols));
+		for (int i = 0; i < symbol_len; ++i)
+			fdom[i] = 0;
+		fdom[bin(mls1_off-1)] = cons_fac;
+		for (int i = 0; i < 71; ++i)
+			fdom[bin(i+mls1_off)] = nrz(CODE::get_be_bit(data, i));
+		for (int i = 71; i < mls1_len; ++i)
+			fdom[bin(i+mls1_off)] = nrz(CODE::get_be_bit(parity, i-71));
+		for (int i = 0; i < mls1_len; ++i)
+			fdom[bin(i+mls1_off)] *= fdom[bin(i-1+mls1_off)];
+		for (int i = 0; i < mls1_len; ++i)
+			fdom[bin(i+mls1_off)] *= nrz(seq1());
+		if (oper_mode > 25) {
+			for (int i = code_off; i < code_off + cons_cols; ++i) {
+				if (i == mls1_off-1)
+					i += mls1_len + 1;
+				fdom[bin(i)] = cons_fac * nrz(seq1());
+			}
+		}
+		symbol();
+	}
+
+	void setSampleSink(void (*sink)(int16_t samples[], int count))
+	{
+		sampleSink = sink;
+	}
+
+	int getSymbolLen()
+	{
+		return symbol_len;
+	}
+	int getGuardLen()
+	{
+		return guard_len;
+	}
+
 };
 
 long long int base37_encoder(const char *str)
@@ -437,4 +451,3 @@ long long int base37_encoder(const char *str)
 	}
 	return acc;
 }
-

@@ -42,6 +42,7 @@ void base37_decoder(char *str, long long int val, int len)
 template <typename value, typename cmplx, int rate>
 struct Decoder
 {
+private:
 	typedef int8_t code_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
@@ -100,10 +101,6 @@ struct Decoder
 	uint8_t preamble_bits[(mls1_len+7)/8];
 
 
-	void setSampleSource(bool (*source)(int16_t* sample))
-	{
-		sampleSource = source;
-	}
 	static int bin(int carrier)
 	{
 		return (carrier + symbol_len) % symbol_len;
@@ -180,6 +177,8 @@ struct Decoder
 		return input_hist(tmp);
 	}
 
+
+public:
 	Decoder() : correlator(mls0_seq()), crc0(0xA8F4), crc1(0x8F6E37A0)
 	{
 		CODE::BoseChaudhuriHocquenghemGenerator<255, 71>::matrix(genmat, true, {
@@ -442,4 +441,10 @@ struct Decoder
 		len = data_bytes;
 		return true;
 	}
+
+	void setSampleSource(bool (*source)(int16_t* sample))
+	{
+		sampleSource = source;
+	}
+
 };

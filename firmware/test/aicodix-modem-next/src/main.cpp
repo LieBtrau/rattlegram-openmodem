@@ -45,7 +45,7 @@ void setup()
 	uint64_t call_sign = 1, rx_call_sign = 0;
 	const modem_config_t *modem_config = &modem_configs[1];
 	encoder->configure(1600, call_sign, modem_config);
-	outputBuffer = new int16_t[encoder->symbol_len + encoder->guard_len];
+	outputBuffer = new int16_t[encoder->getSymbolLen() + encoder->getGuardLen()];
 
 	uint8_t msg1[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \
 		labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip \
