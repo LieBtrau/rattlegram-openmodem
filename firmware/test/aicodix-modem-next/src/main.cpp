@@ -37,6 +37,8 @@ bool sampleSource(int16_t *sample)
 
 void setup()
 {
+	// Print flash size
+	ESP_LOGI(TAG, "Flash size: %d bytes.", ESP.getFlashChipSize());
 	pinMode(22, OUTPUT);
 	encoder = new Encoder<value, cmplx, 8000>();
 	decoder = new Decoder<value, cmplx, 8000>();
