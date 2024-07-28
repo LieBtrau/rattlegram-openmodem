@@ -251,10 +251,8 @@ public:
 
 
 		/**
-		 * @brief Interleaving data
-		 * @note This is used to spread the errors in the data to make it more robust against burst errors
-		 * @note [Interleaved codes](https://en.wikipedia.org/wiki/Burst_error-correcting_code#Interleaved_codes)
-		 * @param c 
+		 * Polar encoding adds redundancy to the data to make it more robust against errors
+		 * Shuffling (or interleaving) the data is a way to make the data more robust against burst errors
 		 */
 		switch(code_order) {
 		case 12:

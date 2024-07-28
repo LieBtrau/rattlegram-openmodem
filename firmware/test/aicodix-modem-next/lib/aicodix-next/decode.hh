@@ -219,12 +219,11 @@ public:
 		// Fill buffer with samples
 		for (int i = 0; i < symbol_len; ++i)
 			tdom[i] = buf[i+symbol_pos+extended_len] * osc();
-
+		// Preamble has been read, remove it from the buffer
 		for (int i = 0; i < symbol_pos+extended_len; ++i)
 		{
 			correlator(buf = next_sample());
 		}
-
 		// Forward FFT
 		fwd(fdom, tdom);
 		// Ordered Statistics Decoder
