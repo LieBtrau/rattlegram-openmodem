@@ -1,7 +1,13 @@
-/*
-OFDM modem decoder
-
-Copyright 2021 Ahmet Inan <inan@aicodix.de>
+/**
+ * @file decode.hh
+ * @author Christoph Tack 
+ * @brief OFDM decoder
+ * 	- Requires 1.2MB of RAM
+ * @version 0.1
+ * @date 2024-07-28
+ * 
+ * @copyright Copyright (c) 2024
+ * @note Based on the [original code](https://github.com/aicodix/modem/tree/next) from Ahmet Inan <inan@aicodix.de>, Copyright 2021
 */
 
 #include <iostream>
@@ -33,11 +39,6 @@ namespace DSP { using std::abs; using std::min; using std::cos; using std::sin; 
 #include "polar_parity_aided.hh"
 #include "modem_config.hh"
 
-void base37_decoder(char *str, long long int val, int len)
-{
-	for (int i = len-1; i >= 0; --i, val /= 37)
-		str[i] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[val%37];
-}
 
 template <typename value, typename cmplx, int rate>
 struct Decoder
@@ -46,6 +47,9 @@ private:
 	typedef int8_t code_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
+#elif defined(ESP32)
+	// Uses less memory and decodes faster than the original 16 byte(?) width SIMD
+	typedef SIMD<code_type, 8 / sizeof(code_type)> mesg_type;
 #else
 	typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
 #endif
@@ -189,6 +193,9 @@ public:
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
 			0b110101001, 0b000011111, 0b110000111, 0b110110001});
 		blockdc.samples(filter_len);
+
+		// Print memory usage of decoder
+		std::cerr << "Decoder memory usage: " << sizeof(*this) << " bytes" << std::endl;
 	}
 
 	bool synchronize()
@@ -252,9 +259,22 @@ public:
 			return false;
 		}
 		oper_mode = meta_data & 255;
-		if (oper_mode && (oper_mode < 22 || oper_mode > 30)) {
-			std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
-			return false;
+		if (oper_mode)
+		{
+			bool found=false;
+			for(int i=0; i<sizeof(modem_configs)/sizeof(modem_configs[0]); i++)
+			{
+				if(modem_configs[i].oper_mode == oper_mode)
+				{
+					found=true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
+				return false;
+			}
 		}
 		std::cerr << "oper mode: " << oper_mode << std::endl;
 		if ((meta_data>>8) == 0 || (meta_data>>8) >= 129961739795077L) {

@@ -435,19 +435,4 @@ public:
 
 };
 
-long long int base37_encoder(const char *str)
-{
-	long long int acc = 0;
-	for (char c = *str++; c; c = *str++) {
-		acc *= 37;
-		if (c >= '0' && c <= '9')
-			acc += c - '0' + 1;
-		else if (c >= 'a' && c <= 'z')
-			acc += c - 'a' + 11;
-		else if (c >= 'A' && c <= 'Z')
-			acc += c - 'A' + 11;
-		else if (c != ' ')
-			return -1;
-	}
-	return acc;
-}
+
