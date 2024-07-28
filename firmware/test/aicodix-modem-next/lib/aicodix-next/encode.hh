@@ -1,8 +1,13 @@
-/*
-OFDM modem encoder
-
-Copyright 2021 Ahmet Inan <inan@aicodix.de>
-*/
+/**
+ * @file encode.hh
+ * @author Christoph Tack
+ * @brief OFDM-modem encoder
+ * @version 0.1
+ * @date 2024-07-28
+ * 
+ * @copyright Copyright (c) 2024
+ * @note Based on the [original code](https://github.com/aicodix/modem/tree/next) from Ahmet Inan <inan@aicodix.de>, Copyright 2021
+ */
 
 #include <iostream>
 #include <cassert>
