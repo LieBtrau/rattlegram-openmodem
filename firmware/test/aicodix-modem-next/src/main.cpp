@@ -86,18 +86,12 @@ void setup()
 
 		// Start of the reception
 		startTime = millis();
-		if (!decoder->synchronize())
+		if (!decoder->synchronization_symbol())
 		{
 			ESP_LOGE(TAG, "Feed failed");
 			return;
 		}
 		ESP_LOGI(TAG, "Feed successful");
-		if (!decoder->preamble())
-		{
-			ESP_LOGE(TAG, "Preamble not detected");
-			return;
-		}
-		ESP_LOGI(TAG, "Preamble detected");
 		if (!decoder->metadata_symbol(rx_call_sign))
 		{
 			ESP_LOGE(TAG, "Metadata not detected");
@@ -108,12 +102,7 @@ void setup()
 		int len;
 		for(int i=0; i<2; i++)
 		{
-			if (!decoder->demodulate())
-			{
-				ESP_LOGE(TAG, "Demodulation failed");
-				return;
-			}
-			if (decoder->decode(&dec_msg, len))
+			if (decoder->data_packet(&dec_msg, len))
 			{
 				ESP_LOGI(TAG, "Message: %s", dec_msg);
 				ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);

@@ -181,38 +181,6 @@ private:
 		return input_hist(tmp);
 	}
 
-
-public:
-	Decoder() : correlator(mls0_seq()), crc0(0xA8F4), crc1(0x8F6E37A0)
-	{
-		CODE::BoseChaudhuriHocquenghemGenerator<255, 71>::matrix(genmat, true, {
-			0b100011101, 0b101110111, 0b111110011, 0b101101001,
-			0b110111101, 0b111100111, 0b100101011, 0b111010111,
-			0b000010011, 0b101100101, 0b110001011, 0b101100011,
-			0b100011011, 0b100111111, 0b110001101, 0b100101101,
-			0b101011111, 0b111111001, 0b111000011, 0b100111001,
-			0b110101001, 0b000011111, 0b110000111, 0b110110001});
-		blockdc.samples(filter_len);
-
-		// Print memory usage of decoder
-		std::cerr << "Decoder memory usage: " << sizeof(*this) << " bytes" << std::endl;
-	}
-
-	bool synchronize()
-	{
-		do {
-			buf = next_sample();
-			if(!buf)
-				return false;
-		} while (!correlator(buf));
-
-		symbol_pos = correlator.symbol_pos;
-		cfo_rad = correlator.cfo_rad;
-		std::cerr << "symbol pos: " << symbol_pos << std::endl;
-		std::cerr << "coarse cfo: " << cfo_rad * (rate / Const::TwoPi()) << " Hz " << std::endl;
-		return true;
-	}
-
 	bool preamble()
 	{
 		osc.omega(-cfo_rad);
@@ -241,47 +209,6 @@ public:
 			std::cerr << "OSD error." << std::endl;
 			return false;
 		}
-		return true;
-	}
-		
-	bool metadata_symbol(uint64_t& call_sign)
-	{
-		uint64_t meta_data = 0;
-		for (int i = 0; i < 55; ++i)
-			meta_data |= (uint64_t)CODE::get_be_bit(preamble_bits, i) << i;
-		uint16_t checksum = 0;
-		for (int i = 0; i < 16; ++i)
-			checksum |= (uint16_t)CODE::get_be_bit(preamble_bits, i+55) << i;
-		crc0.reset();
-		if (crc0(meta_data<<9) != checksum) {
-			std::cerr << "header CRC error." << std::endl;
-			return false;
-		}
-		oper_mode = meta_data & 255;
-		if (oper_mode)
-		{
-			bool found=false;
-			for(int i=0; i<sizeof(modem_configs)/sizeof(modem_configs[0]); i++)
-			{
-				if(modem_configs[i].oper_mode == oper_mode)
-				{
-					found=true;
-					break;
-				}
-			}
-			if(!found)
-			{
-				std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
-				return false;
-			}
-		}
-		std::cerr << "oper mode: " << oper_mode << std::endl;
-		if ((meta_data>>8) == 0 || (meta_data>>8) >= 129961739795077L) {
-			std::cerr << "call sign unsupported." << std::endl;
-			return false;
-		}
-		call_sign = meta_data >> 8;
-
 		return true;
 	}
 
@@ -413,8 +340,88 @@ public:
 		return true;
 	}	
 
-	bool decode(uint8_t** msg, int& len)
+
+public:
+	Decoder() : correlator(mls0_seq()), crc0(0xA8F4), crc1(0x8F6E37A0)
 	{
+		CODE::BoseChaudhuriHocquenghemGenerator<255, 71>::matrix(genmat, true, {
+			0b100011101, 0b101110111, 0b111110011, 0b101101001,
+			0b110111101, 0b111100111, 0b100101011, 0b111010111,
+			0b000010011, 0b101100101, 0b110001011, 0b101100011,
+			0b100011011, 0b100111111, 0b110001101, 0b100101101,
+			0b101011111, 0b111111001, 0b111000011, 0b100111001,
+			0b110101001, 0b000011111, 0b110000111, 0b110110001});
+		blockdc.samples(filter_len);
+
+		// Print memory usage of decoder
+		std::cerr << "Decoder memory usage: " << sizeof(*this) << " bytes" << std::endl;
+	}
+
+	bool synchronization_symbol()
+	{
+		do {
+			buf = next_sample();
+			if(!buf)
+				return false;
+		} while (!correlator(buf));
+
+		symbol_pos = correlator.symbol_pos;
+		cfo_rad = correlator.cfo_rad;
+		std::cerr << "symbol pos: " << symbol_pos << std::endl;
+		std::cerr << "coarse cfo: " << cfo_rad * (rate / Const::TwoPi()) << " Hz " << std::endl;
+		return true;
+	}
+
+	bool metadata_symbol(uint64_t& call_sign)
+	{
+		if(!preamble())
+			return false;
+
+		uint64_t meta_data = 0;
+		for (int i = 0; i < 55; ++i)
+			meta_data |= (uint64_t)CODE::get_be_bit(preamble_bits, i) << i;
+		uint16_t checksum = 0;
+		for (int i = 0; i < 16; ++i)
+			checksum |= (uint16_t)CODE::get_be_bit(preamble_bits, i+55) << i;
+		crc0.reset();
+		if (crc0(meta_data<<9) != checksum) {
+			std::cerr << "header CRC error." << std::endl;
+			return false;
+		}
+		oper_mode = meta_data & 255;
+		if (oper_mode)
+		{
+			bool found=false;
+			for(int i=0; i<sizeof(modem_configs)/sizeof(modem_configs[0]); i++)
+			{
+				if(modem_configs[i].oper_mode == oper_mode)
+				{
+					found=true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				std::cerr << "operation mode " << oper_mode << " unsupported." << std::endl;
+				return false;
+			}
+		}
+		std::cerr << "oper mode: " << oper_mode << std::endl;
+		if ((meta_data>>8) == 0 || (meta_data>>8) >= 129961739795077L) {
+			std::cerr << "call sign unsupported." << std::endl;
+			return false;
+		}
+		call_sign = meta_data >> 8;
+
+		return true;
+	}
+
+
+	bool data_packet(uint8_t** msg, int& len)
+	{
+		if(!demodulate())
+			return false;
+
 		int data_bits = 1 << (code_order -1);
 		std::cerr << "data bits: " << data_bits << std::endl;
 		crc_bits = data_bits + 32;
