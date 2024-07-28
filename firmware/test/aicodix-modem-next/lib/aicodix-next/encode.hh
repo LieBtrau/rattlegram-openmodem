@@ -47,7 +47,7 @@ private:
 	DSP::FastFourierTransform<symbol_len, cmplx, 1> bwd;
 	CODE::CRC<uint16_t> crc0;
 	CODE::CRC<uint32_t> crc1;
-	CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bchenc;
+	CODE::BoseChaudhuriHocquenghemEncoder<mls1_len, 71> bchenc;
 	CODE::PolarParityEncoder<code_type> polarenc;
 	CODE::FisherYatesShuffle<4096> shuffle_4096;
 	CODE::FisherYatesShuffle<8192> shuffle_8192;
@@ -224,86 +224,16 @@ public:
 			0b101011111, 0b111111001, 0b111000011, 0b100111001,
 			0b110101001, 0b000011111, 0b110000111, 0b110110001}){}
 
-	bool addPacket(uint8_t *data, int len)
-	{
-		if (len > (1 << (code_order - 4)))
-		{
-			std::cerr << "Packet too large." << std::endl;
-			return false;
-		}
-		std::memset(input_data, 0, sizeof(input_data));
-		std::memcpy(input_data, data, len);
-		int data_bits = 1 << (code_order -1);
-		int data_bytes = data_bits / 8;
-		// Scramble the data
-		CODE::Xorshift32 scrambler;
-		for (int i = 0; i < data_bytes; ++i)
-			input_data[i] ^= scrambler();
-		// Convert the data to NRZ
-		for (int i = 0; i < data_bits; ++i)
-			mesg[i] = nrz(CODE::get_le_bit(input_data, i));
-		// Add CRC parity bits
-		crc1.reset();
-		for (int i = 0; i < data_bytes; ++i)
-			crc1(input_data[i]);
-		for (int i = 0; i < 32; ++i)
-			mesg[i+data_bits] = nrz((crc1()>>i)&1);
-
-
-		/**
-		 * Polar encoding adds redundancy to the data to make it more robust against errors
-		 * Shuffling (or interleaving) the data is a way to make the data more robust against burst errors
-		 */
-		switch(code_order) {
-		case 12:
-			polarenc(code, mesg, frozen_4096_2147, code_order, 31, 3);
-			shuffle_4096(code);
-			break;
-		case 13:
-			polarenc(code, mesg, frozen_8192_4261, code_order, 31, 5);
-			shuffle_8192(code);
-			break;
-		case 14:
-			polarenc(code, mesg, frozen_16384_8489, code_order, 31, 9);
-			shuffle_16384(code);
-			break;
-		}
-
-		// Generate the OFDM symbols
-		for (int i = 0; i < cons_cols; ++i)
-			prev[i] = fdom[bin(i+code_off)];
-		CODE::MLS seq0(mls0_poly);
-		for (int j = 0, k = 0; j < cons_rows; ++j) {
-			for (int i = 0; i < cons_cols; ++i) {
-				if (mod_bits < 4) {
-					prev[i] *= mod_map(code+k);
-					fdom[bin(i+code_off)] = prev[i];
-					k += mod_bits;
-				} else if (i % comb_dist == comb_off) {
-					prev[i] *= nrz(seq0());
-					fdom[bin(i+code_off)] = prev[i];
-				} else {
-					fdom[bin(i+code_off)] = prev[i] * mod_map(code+k);
-					k += mod_bits;
-				}
-			}
-			symbol();
-		}
-		std::cerr << "PAPR: " << DSP::decibel(papr_min) << " .. " << DSP::decibel(papr_max) << " dB" << std::endl;
-		return true;
-	}
-
 	/**
-	 * @brief Adds an empty packet to the encoder
+	 * @brief Configure the OFDM-encoder
 	 * 
+	 * @param freq_off audio center frequency of the OFDM signal
+	 * @param metadata_symbol metadata to be sent, only lowest 55 bits will be used
+	 * @param modem_config a pointer to the modem configuration
+	 * @return true valid configuration
+	 * @return false invalid configuration
 	 */
-	void tail_block()
-	{
-		std::memset(fdom, 0, sizeof(fdom));
-		symbol();
-	}
-
-	bool configure(int freq_off, uint64_t call_sign, const modem_config_t* modem_config)
+	bool configure(int freq_off, uint64_t metadata_symbol, const modem_config_t* modem_config)
 	{
 		if (freq_off % 50)
 		{
@@ -348,11 +278,10 @@ public:
 	}
 
 	/**
-	 * @brief Generate the pilot block
-	 * @note This doesn't seem to be used for synchronization.  Is it to open the squelch?
-	 * @note You need to send it only once, at the beginning of the transmission.
+	 * @brief Generate a noise block
+	 * @note This can be used to open squelch when using VOX on the transceiver.
 	 */
-	void pilot_block()
+	void noise_block()
 	{
 		CODE::MLS seq2(mls2_poly);
 		// Calculate the scaling factor for the pilot block
@@ -366,12 +295,13 @@ public:
 	}
 
 	/**
-	 * @brief Synchronization fymbol
+	 * @brief Synchronization symbol
 	 * [Robust Frequency and Timing Synchronization for OFDM](https://home.mit.bme.hu/~kollar/papers/Schmidl2.pdf)
 	 * 
-	 * To be repeated every symbol.
+	 * @note It must be sent at least once at the beginning of the transmission.  This allows the receiver to synchronize to the transmitter.
+	 * @note Schmidl-Cox synchronization symbol
 	 */
-	void schmidl_cox()
+	void synchronization_symbol()
 	{
 		CODE::MLS seq0(mls0_poly);
 		value mls0_fac = std::sqrt(value(2 * symbol_len) / value(mls0_len));
@@ -384,9 +314,16 @@ public:
 		symbol(false);
 	}
 
-	void meta_data(uint64_t md)
+	/**
+	 * @brief Generate the metadata symbol
+	 * @param md Metadata to be sent, only lowest 55-8 bits will be used
+	 * @note This function will add the operating mode to the metadata.
+	 */
+	void metadata_symbol(uint64_t md)
 	{
-		uint8_t data[9] = { 0 }, parity[23] = { 0 };
+		md = (md << 8) | oper_mode;
+		uint8_t data[9] = { 0 }, // 71 bits : 55 bits of metadata + 16 bits of CRC
+			parity[23] = { 0 };
 		for (int i = 0; i < 55; ++i)
 			CODE::set_be_bit(data, i, (md>>i)&1);
 		crc0.reset();
@@ -407,13 +344,98 @@ public:
 			fdom[bin(i+mls1_off)] *= fdom[bin(i-1+mls1_off)];
 		for (int i = 0; i < mls1_len; ++i)
 			fdom[bin(i+mls1_off)] *= nrz(seq1());
-		if (oper_mode > 25) {
+		if (mod_bits > 3) {
 			for (int i = code_off; i < code_off + cons_cols; ++i) {
 				if (i == mls1_off-1)
 					i += mls1_len + 1;
 				fdom[bin(i)] = cons_fac * nrz(seq1());
 			}
 		}
+		symbol();
+	}
+
+	/**
+	 * @brief Generate a data packet
+	 * 
+	 * @param data data bytes to be sent
+	 * @param len number of bytes to be sent
+	 * @return false when packet size is too large for the chosen operating mode
+	 */
+	bool data_packet(uint8_t *data, int len)
+	{
+		if (len > (1 << (code_order - 4)))
+		{
+			std::cerr << "Packet too large." << std::endl;
+			return false;
+		}
+		std::memset(input_data, 0, sizeof(input_data));
+		std::memcpy(input_data, data, len);
+		int data_bits = 1 << (code_order -1);
+		int data_bytes = data_bits / 8;
+		// Scramble the data
+		CODE::Xorshift32 scrambler;
+		for (int i = 0; i < data_bytes; ++i)
+			input_data[i] ^= scrambler();
+		// Convert the data to NRZ
+		for (int i = 0; i < data_bits; ++i)
+			mesg[i] = nrz(CODE::get_le_bit(input_data, i));
+		// Add CRC parity bits
+		crc1.reset();
+		for (int i = 0; i < data_bytes; ++i)
+			crc1(input_data[i]);
+		for (int i = 0; i < 32; ++i)
+			mesg[i+data_bits] = nrz((crc1()>>i)&1);
+
+		/**
+		 * Polar encoding adds redundancy to the data to make it more robust against errors
+		 * Shuffling (or interleaving) the data is a way to make the data more robust against burst errors
+		 */
+		switch(code_order) {
+		case 12:
+			polarenc(code, mesg, frozen_4096_2147, code_order, 31, 3);
+			shuffle_4096(code);
+			break;
+		case 13:
+			polarenc(code, mesg, frozen_8192_4261, code_order, 31, 5);
+			shuffle_8192(code);
+			break;
+		case 14:
+			polarenc(code, mesg, frozen_16384_8489, code_order, 31, 9);
+			shuffle_16384(code);
+			break;
+		}
+
+		// Modulating the data
+		for (int i = 0; i < cons_cols; ++i)
+			prev[i] = fdom[bin(i+code_off)];
+		CODE::MLS seq0(mls0_poly);
+		for (int j = 0, k = 0; j < cons_rows; ++j) {
+			for (int i = 0; i < cons_cols; ++i) {
+				if (mod_bits < 4) {
+					prev[i] *= mod_map(code+k);
+					fdom[bin(i+code_off)] = prev[i];
+					k += mod_bits;
+				} else if (i % comb_dist == comb_off) {
+					prev[i] *= nrz(seq0());
+					fdom[bin(i+code_off)] = prev[i];
+				} else {
+					fdom[bin(i+code_off)] = prev[i] * mod_map(code+k);
+					k += mod_bits;
+				}
+			}
+			symbol();
+		}
+		std::cerr << "PAPR: " << DSP::decibel(papr_min) << " .. " << DSP::decibel(papr_max) << " dB" << std::endl;
+		return true;
+	}
+
+	/**
+	 * @brief Empty packet
+	 * 
+	 */
+	void empty_packet()
+	{
+		std::memset(fdom, 0, sizeof(fdom));
 		symbol();
 	}
 

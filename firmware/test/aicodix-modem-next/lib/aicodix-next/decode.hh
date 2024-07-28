@@ -244,7 +244,7 @@ public:
 		return true;
 	}
 		
-	bool meta_data(uint64_t& call_sign)
+	bool metadata_symbol(uint64_t& call_sign)
 	{
 		uint64_t meta_data = 0;
 		for (int i = 0; i < 55; ++i)

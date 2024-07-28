@@ -61,27 +61,27 @@ void setup()
 	ESP_LOGI(TAG, "Used RAM size: %lu",  heap_caps_get_total_size(MALLOC_CAP_8BIT) - heap_caps_get_free_size(MALLOC_CAP_8BIT));
 		uint32_t startTime = millis();
 		// ESP_LOGI(TAG, "Creating pilot block");
-		//encoder->pilot_block();
+		//encoder->noise_block();
 		// ESP_LOGI(TAG, "Creating correlator block");
-		encoder->schmidl_cox();
+		encoder->synchronization_symbol();
 		// ESP_LOGI(TAG, "Creating metadata block");
-		encoder->meta_data((call_sign << 8) | modem_config->oper_mode);
-		//encoder->pilot_block();
+		encoder->metadata_symbol(call_sign);
+		//encoder->noise_block();
 		// Payload
 		ESP_LOGI(TAG, "Creating payload block");
-		if (!encoder->addPacket(msg1, sizeof(msg1)))
+		if (!encoder->data_packet(msg1, sizeof(msg1)))
 		{
 			ESP_LOGE(TAG, "Failed to add packet");
 			return;
 		}
-		if (!encoder->addPacket(msg2, sizeof(msg2)))
+		if (!encoder->data_packet(msg2, sizeof(msg2)))
 		{
 			ESP_LOGE(TAG, "Failed to add packet");
 			return;
 		}
 		// End of the transmission
 		// ESP_LOGI(TAG, "Creating tail block");
-		//encoder->tail_block();
+		//encoder->empty_packet();
 		// ESP_LOGI(TAG, "Time to build a packet: %d ms", millis() - startTime);
 
 		// Start of the reception
@@ -98,7 +98,7 @@ void setup()
 			return;
 		}
 		ESP_LOGI(TAG, "Preamble detected");
-		if (!decoder->meta_data(rx_call_sign))
+		if (!decoder->metadata_symbol(rx_call_sign))
 		{
 			ESP_LOGE(TAG, "Metadata not detected");
 			return;
