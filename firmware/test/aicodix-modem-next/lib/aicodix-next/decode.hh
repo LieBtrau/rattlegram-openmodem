@@ -47,9 +47,9 @@ private:
 	typedef int8_t code_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
-#elif defined(ESP32)
-	// Uses less memory and decodes faster than the original 16 byte(?) width SIMD
-	typedef SIMD<code_type, 8 / sizeof(code_type)> mesg_type;
+// #elif defined(ESP32)
+// 	// Uses less memory and decodes faster than the original 16 byte(?) width SIMD, but crc gives false positives for some reason
+// 	typedef SIMD<code_type, 8 / sizeof(code_type)> mesg_type;
 #else
 	typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
 #endif
@@ -83,6 +83,8 @@ private:
 	CODE::CRC<uint32_t> crc1;
 	CODE::OrderedStatisticsDecoder<255, 71, 2/*4*/> osddec;
 	CODE::PolarParityDecoder<mesg_type, code_max> polardec;
+	CODE::ReverseFisherYatesShuffle<1024> shuffle_1024;
+	CODE::ReverseFisherYatesShuffle<2048> shuffle_2048;
 	CODE::ReverseFisherYatesShuffle<4096> shuffle_4096;
 	CODE::ReverseFisherYatesShuffle<8192> shuffle_8192;
 	CODE::ReverseFisherYatesShuffle<16384> shuffle_16384;
@@ -103,6 +105,7 @@ private:
 	bool (*sampleSource)(int16_t* sample) { nullptr }; 
 	DSP::Phasor<cmplx> osc;
 	uint8_t preamble_bits[(mls1_len+7)/8];
+	int reserved_tones;
 
 
 	static int bin(int carrier)
@@ -226,6 +229,7 @@ private:
 				comb_cols = modem_configs[i].comb_cols;
 				code_order = modem_configs[i].code_order;
 				code_cols = modem_configs[i].code_cols;
+				reserved_tones = modem_configs[i].reserved_tones;
 				break;
 			}
 		}
@@ -257,7 +261,8 @@ private:
 			fwd(fdom, tdom);
 			for (int i = 0; i < cons_cols; ++i)
 				cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
-			if (mod_bits > 3) {
+			// TODO
+			if (/*oper_mode>25*/ reserved_tones) {
 				for (int i = 0; i < comb_cols; ++i)
 					cons[cons_cols*j+comb_dist*i+comb_off] *= nrz(seq0());
 				for (int i = 0; i < comb_cols; ++i) {
@@ -290,7 +295,8 @@ private:
 			//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
 			for (int i = 0; i < cons_cols; ++i)
 				cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-			if (mod_bits > 3) {
+			// TODO
+			if (reserved_tones/*oper_mode>25*/) {
 				for (int i = 0; i < cons_cols; ++i)
 					if (i % comb_dist != comb_off)
 						prev[i] *= DSP::polar<value>(1, tse(i+code_off));
@@ -304,7 +310,8 @@ private:
 		std::cerr << "Es/N0 (dB):";
 		value sp = 0, np = 0;
 		for (int j = 0, k = 0; j < cons_rows; ++j) {
-			if (mod_bits > 3) {
+			// TODO
+			if (reserved_tones/*oper_mode>25*/) {
 				for (int i = 0; i < comb_cols; ++i) {
 					cmplx hard(1, 0);
 					cmplx error = cons[cons_cols*j+comb_dist*i+comb_off] - hard;
@@ -328,7 +335,8 @@ private:
 			if (std::is_same<code_type, int8_t>::value && precision > 32)
 				precision = 32;
 			for (int i = 0; i < cons_cols; ++i) {
-				if (mod_bits > 3 && i % comb_dist == comb_off)
+				//TODO
+				if (reserved_tones/*oper_mode>25*/  && i % comb_dist == comb_off)
 					continue;
 				mod_soft(code+k, cons[cons_cols*j+i], precision);
 				k += mod_bits;
@@ -427,6 +435,16 @@ public:
 		crc_bits = data_bits + 32;
 
 		switch(code_order) {
+		case 10:
+			// 64 bytes
+			shuffle_1024(code);
+			polardec(nullptr, mesg, code, frozen_1024_562, code_order, 31, 3);
+			break;
+		case 11:
+			// 128 bytes
+			shuffle_2048(code);
+			polardec(nullptr, mesg, code, frozen_2048_1090, code_order, 31, 3);
+			break;
 		case 12:
 			// 256 bytes
 			shuffle_4096(code);

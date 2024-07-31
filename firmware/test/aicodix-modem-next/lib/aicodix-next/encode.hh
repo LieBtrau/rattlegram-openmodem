@@ -54,6 +54,8 @@ private:
 	CODE::CRC<uint32_t> crc1;
 	CODE::BoseChaudhuriHocquenghemEncoder<mls1_len, 71> bchenc;
 	CODE::PolarParityEncoder<code_type> polarenc;
+	CODE::FisherYatesShuffle<1024> shuffle_1024;
+	CODE::FisherYatesShuffle<2048> shuffle_2048;
 	CODE::FisherYatesShuffle<4096> shuffle_4096;
 	CODE::FisherYatesShuffle<8192> shuffle_8192;
 	CODE::FisherYatesShuffle<16384> shuffle_16384;
@@ -77,6 +79,7 @@ private:
 	int mls1_off;
 	int comb_dist = 1;
 	int comb_off = 1;
+	int reserved_tones = 0;
 	void (*sampleSink)(int16_t samples[], int count) { nullptr }; 
 
 	static int bin(int carrier)
@@ -139,10 +142,12 @@ private:
 		value scale = 2;
 		for (int i = 0; i < symbol_len; ++i)
 			tdom[i] /= scale * std::sqrt(value(symbol_len));
-		clipping_and_filtering(scale, oper_mode > 25 && papr_reduction);
+		// TODO
+		clipping_and_filtering(scale, /*oper_mode > 25*/reserved_tones && papr_reduction);
 
 		// Tone reservation for QAM
-		if (oper_mode > 25 && papr_reduction)
+		// TODO
+		if (/*oper_mode > 25*/reserved_tones && papr_reduction)
 			tone_reservation();
 		// Remove zeros from the symbol
 		for (int i = 0; i < symbol_len; ++i)
@@ -252,7 +257,7 @@ public:
 		int comb_cols = modem_config->comb_cols;
 		code_order = modem_config->code_order;
 		int code_cols = modem_config->code_cols;
-		int reserved_tones = modem_config->reserved_tones;
+		reserved_tones = modem_config->reserved_tones;
 
 
 		if (freq_off < band_width / 2 - rate / 2 || freq_off > rate / 2 - band_width / 2)
@@ -349,7 +354,7 @@ public:
 			fdom[bin(i+mls1_off)] *= fdom[bin(i-1+mls1_off)];
 		for (int i = 0; i < mls1_len; ++i)
 			fdom[bin(i+mls1_off)] *= nrz(seq1());
-		if (mod_bits > 3) {
+		if (reserved_tones/*oper_mode > 25*/) {
 			for (int i = code_off; i < code_off + cons_cols; ++i) {
 				if (i == mls1_off-1)
 					i += mls1_len + 1;
@@ -396,6 +401,14 @@ public:
 		 * Shuffling (or interleaving) the data is a way to make the data more robust against burst errors
 		 */
 		switch(code_order) {
+		case 10:
+			polarenc(code, mesg, frozen_1024_562, code_order, 31, 3);
+			shuffle_1024(code);
+			break;
+		case 11:
+			polarenc(code, mesg, frozen_2048_1090, code_order, 31, 3);
+			shuffle_2048(code);
+			break;
 		case 12:
 			polarenc(code, mesg, frozen_4096_2147, code_order, 31, 3);
 			shuffle_4096(code);
@@ -416,7 +429,7 @@ public:
 		CODE::MLS seq0(mls0_poly);
 		for (int j = 0, k = 0; j < cons_rows; ++j) {
 			for (int i = 0; i < cons_cols; ++i) {
-				if (mod_bits < 4) {
+				if (/*oper_mode < 26*/!reserved_tones) {
 					prev[i] *= mod_map(code+k);
 					fdom[bin(i+code_off)] = prev[i];
 					k += mod_bits;
@@ -438,7 +451,7 @@ public:
 	 * @brief Empty packet
 	 * 
 	 */
-	void empty_packet()
+	void silence_packet()
 	{
 		std::memset(fdom, 0, sizeof(fdom));
 		symbol();
