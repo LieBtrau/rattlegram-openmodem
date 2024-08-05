@@ -59,7 +59,7 @@ void setup()
 	encoder->setSampleSink(sampleSink);
 	decoder->setSampleSource(sampleSource);
 	uint64_t call_sign = 1, rx_call_sign = 0;
-	const modem_config_t *modem_config = &modem_configs[1];
+	const modem_config_t *modem_config = &modem_configs[11];
 	encoder->configure(1600, call_sign, modem_config);
 	outputBuffer = new int16_t[encoder->getSymbolLen() + encoder->getGuardLen()];
 
@@ -98,9 +98,10 @@ void setup()
 	// ESP_LOGI(TAG, "Time to build a packet: %d ms", millis() - startTime);
 
 	// Start of the reception
-	startTime = millis();
+	
 	uint8_t *dec_msg = nullptr;
 	int len;
+	startTime = millis();
 	while (decoder->synchronization_symbol())
 	{
 		if (!decoder->metadata_symbol(rx_call_sign))
@@ -114,8 +115,10 @@ void setup()
 			dec_msg[len - 1] = '\0';
 			ESP_LOGI(TAG, "Message: %s, length: %d", dec_msg, len);
 		}
+		ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
+		startTime = millis();
 	}
-	ESP_LOGI(TAG, "Time to receive a packet: %d ms", millis() - startTime);
+	
 }
 
 void loop()

@@ -47,9 +47,8 @@ private:
 	typedef int8_t code_type;
 #ifdef __AVX2__
 	typedef SIMD<code_type, 32 / sizeof(code_type)> mesg_type;
-// #elif defined(ESP32)
-// 	// Uses less memory and decodes faster than the original 16 byte(?) width SIMD, but crc gives false positives for some reason
-// 	typedef SIMD<code_type, 8 / sizeof(code_type)> mesg_type;
+#elif defined(ESP32)
+	typedef SIMD<code_type, 8 / sizeof(code_type)> mesg_type;
 #else
 	typedef SIMD<code_type, 16 / sizeof(code_type)> mesg_type;
 #endif
@@ -261,7 +260,6 @@ private:
 			fwd(fdom, tdom);
 			for (int i = 0; i < cons_cols; ++i)
 				cons[cons_cols*j+i] = demod_or_erase(fdom[bin(i+code_off)], prev[i]);
-			// TODO
 			if (/*oper_mode>25*/ reserved_tones) {
 				for (int i = 0; i < comb_cols; ++i)
 					cons[cons_cols*j+comb_dist*i+comb_off] *= nrz(seq0());
@@ -295,7 +293,6 @@ private:
 			//std::cerr << "Theil-Sen yint = " << tse.yint() << std::endl;
 			for (int i = 0; i < cons_cols; ++i)
 				cons[cons_cols*j+i] *= DSP::polar<value>(1, -tse(i+code_off));
-			// TODO
 			if (reserved_tones/*oper_mode>25*/) {
 				for (int i = 0; i < cons_cols; ++i)
 					if (i % comb_dist != comb_off)
@@ -310,7 +307,6 @@ private:
 		std::cerr << "Es/N0 (dB):";
 		value sp = 0, np = 0;
 		for (int j = 0, k = 0; j < cons_rows; ++j) {
-			// TODO
 			if (reserved_tones/*oper_mode>25*/) {
 				for (int i = 0; i < comb_cols; ++i) {
 					cmplx hard(1, 0);
@@ -335,7 +331,6 @@ private:
 			if (std::is_same<code_type, int8_t>::value && precision > 32)
 				precision = 32;
 			for (int i = 0; i < cons_cols; ++i) {
-				//TODO
 				if (reserved_tones/*oper_mode>25*/  && i % comb_dist == comb_off)
 					continue;
 				mod_soft(code+k, cons[cons_cols*j+i], precision);
@@ -467,6 +462,7 @@ public:
 			for (int i = 0; i < crc_bits; ++i)
 				crc1(mesg[i].v[k] < 0);
 			if (crc1() == 0) {
+				// Be careful, a packet of all zeros will pass the CRC check
 				best = k;
 				break;
 			}

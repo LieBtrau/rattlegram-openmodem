@@ -5,7 +5,7 @@ typedef struct {
     int oper_mode;  // Operating mode
     int band_width; // Occupied Bandwidth
     int mod_bits;   // Number of bits per symbol
-    int cons_rows;  
+    int cons_rows;  // Number of OFDM-symbols per frame
     int comb_cols;  
     int code_order; // Code order for polar codes
     int code_cols;
