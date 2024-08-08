@@ -333,7 +333,8 @@ public:
 	{
 		md = (md << 8) | oper_mode;
 		uint8_t data[9] = { 0 }, // 71 bits : 55 bits of metadata + 16 bits of CRC
-			parity[23] = { 0 };
+			parity[23] = { 0 };	// 23*8 = 184 bits
+		// Total number of bits = 71 + 184 = 255
 		for (int i = 0; i < 55; ++i)
 			CODE::set_be_bit(data, i, (md>>i)&1);
 		crc0.reset();
