@@ -23,5 +23,4 @@ void SinWaveGenerator::getFrames(Frame_t *frames, int number_frames)
         frames[i].left = m_lut[m_phaseAccu>>8];
         frames[i].right = 0;
     }
-    delay(15);  //?
 }

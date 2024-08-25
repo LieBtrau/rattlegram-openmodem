@@ -52,7 +52,7 @@ typedef enum audio_mode_t
 	ANALOG_LOOPBACK,
 	I2S_OUTPUT
 } audio_mode_t;
-static audio_mode_t mode = ANALOG_LOOPBACK;
+static audio_mode_t mode = I2S_OUTPUT;
 
 void vSenderTask(void *pvParameters)
 {
@@ -84,6 +84,7 @@ void setup()
 	case ANALOG_LOOPBACK:
 		/**
 		 * Analog audio from the LINEIN will be looped back to the EARPHONE-jack.
+		 * 
 		 * Connect laptop to LINEIN of ESP32-A1S.
 		 * Connect headphones to EARPHONE-jack of ESP32-A1S.
 		 * Alternatively, connect EARPHONE-jack to laptop (be careful with cable-splitters).  
@@ -97,13 +98,22 @@ void setup()
 		audioShield.mixerSourceControl(SRCSELOUT);	   // Use LIN and RIN as output
 		break;
 	case I2S_OUTPUT:
+		/** 
+		 * Output a 100Hz sine wave out on the left channel of the analog line-out of the ESP32-A1S
+		 * 
+		 * Connect headphones to EARPHONE-jack of ESP32-A1S.
+		 * Alternatively, connect EARPHONE-jack to laptop (be careful with cable-splitters).  
+		 * My splitter shorts the left and right output channel to the single microphone input of the laptop.
+		*/
+		audioShield.outputSelect(ES8388::OutSel::OUT2); // EARPHONE-jack on ESP32-A1S
+		audioShield.setOutputVolume(ES8388::OutSel::OUT2, 30);
+		audioShield.mixerSourceControl(DACOUT);	   // Use LIN and RIN as output
 		sampleSource = new SinWaveGenerator(8000, 100, 32000);
 		xQueue = xQueueCreate(3, sizeof(Frame_t) * sampleSource->getFrameSampleCount());
 		if (xQueue == NULL)
 		{
 			ESP_LOGE(TAG, "Can't create queue");
 		}
-
 		ESP_LOGI(TAG, "Starting I2S Output");
 		output = new ES8388Output(I2S_NUM_0, &i2s_pin_config);
 		// init needed here to generate MCLK
