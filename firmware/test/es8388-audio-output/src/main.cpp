@@ -108,6 +108,13 @@ void setup()
 		audioShield.outputSelect(ES8388::OutSel::OUT2); // EARPHONE-jack on ESP32-A1S
 		audioShield.setOutputVolume(ES8388::OutSel::OUT2, 30);
 		audioShield.mixerSourceControl(DACOUT);	   // Use LIN and RIN as output
+		/**
+		 * Measurements with REW:
+		 * 48000kHz sample rate yields a signal with THD+N of 0.60% (device powered by lab power supply, USB disconnected)
+		 * 8000kHz sample rate yields a signal with THD+N of 3.27% (device powered by lab power supply, USB disconnected)
+		 * 
+		 * The high pitched noise is audible on the headphones.
+		 */
 		sampleSource = new SinWaveGenerator(8000, 100, 32000);
 		xQueue = xQueueCreate(3, sizeof(Frame_t) * sampleSource->getFrameSampleCount());
 		if (xQueue == NULL)
