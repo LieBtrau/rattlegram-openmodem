@@ -115,7 +115,7 @@ void setup()
 		 * 
 		 * The high pitched noise is audible on the headphones.
 		 */
-		sampleSource = new SinWaveGenerator(8000, 100, 32000);
+		sampleSource = new SinWaveGenerator(48000, 1000, 32000);
 		xQueue = xQueueCreate(3, sizeof(Frame_t) * sampleSource->getFrameSampleCount());
 		if (xQueue == NULL)
 		{
