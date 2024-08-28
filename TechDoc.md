@@ -12,6 +12,16 @@ An audio codec will be used instead of the ADC/DAC inside the ESP32 because it o
     * Line output to radio's microphone input
 Suggestion to use left channel as audio flowing from operator to HT and right channel as audio flowing from HT to operator.
 
+# OFDM-modem
+The OFDM modem will run at 8kHz.  At 48kHz, the ESP32 is too slow to encode the data (x20 slower than on 8kHz).  For the decoder, downsampling from 48kHz to 8kHz also speeds up the decoding process, but not as much as encoding.
+
+# Resampling
+* [Aicodix DSP resampler](https://github.com/aicodix/dsp/blob/master/resampler.hh)
+  * [example](https://github.com/aicodix/disorders/blob/dd82ccef185ed7746f732bbf85a10187095f3599/sfo.cc#L10)
+* [Audio-Smarc](https://audio-smarc.sourceforge.net/)
+* [Speex-Resample](https://android.googlesource.com/platform/external/speex/+/donut-release/libspeex/resample.c)
+
+
 ## Options
 * ES8388 : Used in Aithinker Audio toolkit, stereo in/out
     * available at JLCPCB, $0.99/pce
