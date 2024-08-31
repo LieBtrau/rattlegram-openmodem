@@ -31,12 +31,14 @@
 #include "SinWaveGenerator.h"
 #include "ES8388Output.h"
 #include "ES8388.h"
+#include "Upsampler.h"
 #include "SampleFilter.h"
 
 static const char *TAG = "main";
-// i2s pins
+
 static ES8388Output *output;
-static SampleSource *sampleSource;
+static Upsampler *upsampler;
+
 // i2c control
 static ES8388 audioShield(33, 32);
 static i2s_pin_config_t i2s_pin_config =
@@ -46,7 +48,6 @@ static i2s_pin_config_t i2s_pin_config =
 		.data_out_num = 26, // data out to audio codec
 		.data_in_num = 35	// data from audio codec
 };
-static SampleFilter interpolationFilter;
 
 typedef enum audio_mode_t
 {
@@ -101,11 +102,11 @@ void setup()
 		 * 
 		 * The high pitched noise is audible on the headphones.
 		 */
-		sampleSource = new SinWaveGenerator(8000, 1000, 32000);
+		upsampler = new Upsampler(48000, new SinWaveGenerator(8000, 1000, 32000), new SampleFilter());
 		ESP_LOGI(TAG, "Starting I2S Output");
 		output = new ES8388Output(I2S_NUM_0, &i2s_pin_config);
 		// init needed here to generate MCLK
-		output->start(sampleSource);
+		output->start(upsampler);
 		break;
 	default:
 		break;
