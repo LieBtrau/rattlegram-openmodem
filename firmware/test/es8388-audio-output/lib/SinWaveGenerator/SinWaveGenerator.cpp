@@ -11,7 +11,7 @@ SinWaveGenerator::SinWaveGenerator(int sample_rate, int frequency, float magnitu
     //Sine wave table generated in Excel using the following formula, with indices [0..255]: =ROUND(SIN(2*PI()*A1/256)*127.5+127.5,0)
     for (int i = 0; i < 256; i++)
     {
-        m_lut[i] = round(sin(M_TWOPI * i / 256) * magnitude + offset);
+        m_lut[i] = sin(M_TWOPI * i / 256) * magnitude + offset;
     }
 }
 

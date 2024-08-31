@@ -107,6 +107,7 @@ void setup()
 		output = new ES8388Output(I2S_NUM_0, &i2s_pin_config);
 		// init needed here to generate MCLK
 		output->start(upsampler);
+		//output->start(new SinWaveGenerator(8000, 1000, 32000));
 		break;
 	default:
 		break;

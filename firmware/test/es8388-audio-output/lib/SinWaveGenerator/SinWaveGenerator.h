@@ -8,7 +8,7 @@ private:
     uint32_t m_sample_rate;
     uint16_t m_phaseAccu;
     uint16_t m_tuningWord;
-    uint16_t m_lut[256];
+    float m_lut[256];
 
 public:
     SinWaveGenerator(int sample_rate, int frequency, float magnitude, float offset=0);
