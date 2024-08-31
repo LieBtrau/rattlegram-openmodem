@@ -1,5 +1,5 @@
 /**
- * Output a 200Hz sine wave out on the left channel of the analog line-out of the ESP32-A1S
+ * Output a sine wave out on the left channel of the analog line-out of the ESP32-A1S
  *
  * Maybe helpful for debugging:
  *  http://www.iotsharing.com/2017/07/how-to-use-arduino-esp32-i2s-to-play-wav-music-from-sdcard.html
@@ -31,6 +31,7 @@
 #include "SinWaveGenerator.h"
 #include "ES8388Output.h"
 #include "ES8388.h"
+#include "SampleFilter.h"
 
 static const char *TAG = "main";
 // i2s pins
@@ -38,7 +39,6 @@ static ES8388Output *output;
 static SampleSource *sampleSource;
 // i2c control
 static ES8388 audioShield(33, 32);
-static QueueHandle_t xQueue;
 static i2s_pin_config_t i2s_pin_config =
 	{
 		.bck_io_num = 27,	// Serial Clock (SCK)
@@ -46,6 +46,7 @@ static i2s_pin_config_t i2s_pin_config =
 		.data_out_num = 26, // data out to audio codec
 		.data_in_num = 35	// data from audio codec
 };
+static SampleFilter interpolationFilter;
 
 typedef enum audio_mode_t
 {
@@ -53,21 +54,6 @@ typedef enum audio_mode_t
 	I2S_OUTPUT
 } audio_mode_t;
 static audio_mode_t mode = I2S_OUTPUT;
-
-void vSenderTask(void *pvParameters)
-{
-	SampleSource *source = (SampleSource *)pvParameters;
-	Frame_t samples[source->getFrameSampleCount()];
-
-	for (;;)
-	{
-		do
-		{
-			source->getFrames(samples, source->getFrameSampleCount());
-		} while (xQueueSendToBack(xQueue, &samples, portMAX_DELAY) == pdTRUE);
-		taskYIELD();
-	}
-}
 
 void setup()
 {
@@ -115,18 +101,11 @@ void setup()
 		 * 
 		 * The high pitched noise is audible on the headphones.
 		 */
-		sampleSource = new SinWaveGenerator(48000, 1000, 32000);
-		xQueue = xQueueCreate(3, sizeof(Frame_t) * sampleSource->getFrameSampleCount());
-		if (xQueue == NULL)
-		{
-			ESP_LOGE(TAG, "Can't create queue");
-		}
+		sampleSource = new SinWaveGenerator(8000, 1000, 32000);
 		ESP_LOGI(TAG, "Starting I2S Output");
 		output = new ES8388Output(I2S_NUM_0, &i2s_pin_config);
 		// init needed here to generate MCLK
-		output->start(sampleSource, xQueue);
-		TaskHandle_t writerTaskHandle;
-		xTaskCreate(vSenderTask, "Sender1", 8192, (void *)sampleSource, 2, &writerTaskHandle);
+		output->start(sampleSource);
 		break;
 	default:
 		break;

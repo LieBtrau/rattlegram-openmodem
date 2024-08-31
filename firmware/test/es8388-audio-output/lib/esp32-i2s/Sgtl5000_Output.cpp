@@ -26,7 +26,7 @@ void Sgtl5000_Output::start(SampleSource *sample_generator, QueueHandle_t xAudio
 		.dma_buf_len = 256,
 		.use_apll = true,
 		.tx_desc_auto_clear = true,
-		.fixed_mclk = sample_generator->sampleRate() * 256UL};
+		.fixed_mclk = (int)(sample_generator->sampleRate() * 256)};
     I2SOutput::start(&m_i2sConfig, sample_generator);
 }
 

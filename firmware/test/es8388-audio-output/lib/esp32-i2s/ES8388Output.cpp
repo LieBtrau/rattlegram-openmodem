@@ -13,7 +13,7 @@ ES8388Output::ES8388Output(i2s_port_t i2sPort, i2s_pin_config_t* pin_config) : I
 {
 }
 
-void ES8388Output::start(SampleSource *sample_generator, QueueHandle_t xAudioSamplesQueue)
+void ES8388Output::start(SampleSource *sample_generator)
 {
 	i2s_config_t m_i2sConfig = {
 		.mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX), // Only TX

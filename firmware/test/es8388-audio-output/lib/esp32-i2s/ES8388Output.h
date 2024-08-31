@@ -6,7 +6,7 @@ class ES8388Output : public I2SOutput
 {
 public:
     ES8388Output(i2s_port_t i2sPort, i2s_pin_config_t* pin_config);
-    void start(SampleSource *sample_generator, QueueHandle_t xAudioSamplesQueue);
+    void start(SampleSource *sample_generator);
 
 protected:
     void configureI2S();
