@@ -8,7 +8,6 @@
  * @copyright Copyright (c) 2024
  * @note Based on the [original code](https://github.com/aicodix/modem/tree/next) from Ahmet Inan <inan@aicodix.de>, Copyright 2021
  */
-
 #include <iostream>
 #include <cassert>
 #include <cstdint>
@@ -87,6 +86,7 @@ private:
 	int mod_bits;
 	int oper_mode;
 	int code_order; // Polar encoder order : 2**code_order = number of data bits
+	int packet_len;
 	int code_off;
 	int cons_cols;
 	int cons_rows;
@@ -273,7 +273,7 @@ public:
 		code_order = modem_config->code_order;
 		int code_cols = modem_config->code_cols;
 		reserved_tones = modem_config->reserved_tones;
-
+		packet_len = (1 << (modem_config->code_order - 4)) - 1;	
 
 		if (freq_off < band_width / 2 - rate / 2 || freq_off > rate / 2 - band_width / 2)
 		{
@@ -521,7 +521,10 @@ public:
 	{
 		return guard_len;
 	}
-
+	size_t getPacketSize()
+	{
+		return packet_len;
+	}
 };
 
 

@@ -21,7 +21,6 @@ typedef DSP::Complex<value> cmplx;
 
 static Encoder<value, cmplx, 8000> *encoder = nullptr;
 static Decoder<value, cmplx, 8000> *decoder = nullptr;
-static int16_t *outputBuffer = nullptr;
 static const char *TAG = "main";
 std::queue<int16_t> sampleQueue;
 
@@ -61,7 +60,6 @@ void setup()
 	uint64_t call_sign = 1, rx_call_sign = 0;
 	const modem_config_t *modem_config = &modem_configs[11];
 	encoder->configure(1600, call_sign, modem_config);
-	outputBuffer = new int16_t[encoder->getSymbolLen() + encoder->getGuardLen()];
 
 	uint8_t msg[] = "No one would have believed in the last years of the nineteenth century that this world was being watched keenly and \
 	closely by intelligences greater than man’s and yet as mortal as his own; that as men busied themselves about their various concerns \
@@ -85,7 +83,8 @@ void setup()
 	// encoder->noise_block();
 	//  Payload
 	ESP_LOGI(TAG, "Creating payload block");
-	size_t packet_size = (1 << (modem_config->code_order - 4)) - 1;
+	
+	int packet_size = encoder->getPacketSize();
 	for (uint8_t *ptr = msg; ptr < msg + sizeof(msg); ptr += packet_size)
 	{
 		encoder->synchronization_symbol();
