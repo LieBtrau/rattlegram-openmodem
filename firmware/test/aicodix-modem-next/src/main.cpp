@@ -59,7 +59,7 @@ void setup()
 	decoder->setSampleSource(sampleSource);
 	uint64_t call_sign = 1, rx_call_sign = 0;
 	const modem_config_t *modem_config = &modem_configs[11];
-	encoder->configure(1600, call_sign, modem_config);
+	encoder->configure(1600, modem_config);
 
 	uint8_t msg[] = "No one would have believed in the last years of the nineteenth century that this world was being watched keenly and \
 	closely by intelligences greater than man’s and yet as mortal as his own; that as men busied themselves about their various concerns \

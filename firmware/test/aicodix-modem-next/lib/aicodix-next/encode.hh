@@ -253,12 +253,11 @@ public:
 	 * @brief Configure the OFDM-encoder
 	 * 
 	 * @param freq_off audio center frequency of the OFDM signal
-	 * @param metadata_symbol metadata to be sent, only lowest 55 bits will be used
 	 * @param modem_config a pointer to the modem configuration
 	 * @return true valid configuration
 	 * @return false invalid configuration
 	 */
-	bool configure(int freq_off, uint64_t metadata_symbol, const modem_config_t* modem_config)
+	bool configure(int freq_off, const modem_config_t* modem_config)
 	{
 		if (freq_off % 50)
 		{
