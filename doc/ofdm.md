@@ -1,5 +1,6 @@
 [Digital Communications: OFDM](https://www.youtube.com/watch?v=LZrCiQhnMsE)
 [GEL7014 - Module 4.13 - OFDM implementation](https://www.youtube.com/watch?v=oOOS9xDXLaU)
+[tinyofdm](https://github.com/HardwareTeams/tinyofdm/tree/main) : simple OFDM implementation in Python
 
 1. OFDM much less complex to deal with ISI (inter-symbol-interference) caused by dispersion.
 2. dispersion changes amplitude and phase of the signal, but not the shape of the signal or frequency content.
