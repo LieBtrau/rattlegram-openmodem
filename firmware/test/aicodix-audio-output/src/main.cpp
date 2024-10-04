@@ -69,7 +69,7 @@ void setup()
 	audioShield.setOutputVolume(ES8388::OutSel::OUT2, 30);
 	audioShield.mixerSourceControl(DACOUT); // Use LIN and RIN as output
 
-	int config_index = 4;
+	int config_index = 4; // operating mode 23
 	encoder = new Encoder<value, cmplx, SAMPLE_RATE>();
     encoder->configure(1600, &modem_configs[config_index]);
     encoder->setSampleSink(sampleSink);
@@ -84,16 +84,17 @@ void setup()
 
 void sendPacket(const char *msg, int len)
 {
-	const uint8_t callsign[9] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-	encoder->spectrogram_block(callsign);
-	// uint64_t call_sign = 0x12345678;
-	// int packet_size = encoder->getPacketSize();
-	// for (uint8_t *ptr = reinterpret_cast<uint8_t*>(const_cast<char*>(msg)); ptr < reinterpret_cast<uint8_t*>(const_cast<char*>(msg)) + sizeof(msg); ptr += packet_size)
-	// {
-	// 	encoder->synchronization_symbol();
-	// 	encoder->metadata_symbol(call_sign);
-	// 	encoder->data_packet(ptr, packet_size);
-	// }    
+	//const uint8_t callsign[9] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+	//encoder->spectrogram_block(callsign);
+
+	uint64_t call_sign = 0x12345678;
+	int packet_size = encoder->getPacketSize();
+	for (uint8_t *ptr = reinterpret_cast<uint8_t*>(const_cast<char*>(msg)); ptr < reinterpret_cast<uint8_t*>(const_cast<char*>(msg)) + sizeof(msg); ptr += packet_size)
+	{
+		encoder->synchronization_symbol();
+		encoder->metadata_symbol(call_sign);
+		encoder->data_packet(ptr, packet_size);
+	}    
 }
 
 void loop()
