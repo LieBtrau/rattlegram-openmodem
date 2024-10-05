@@ -16,4 +16,8 @@ call sign:    3DYN1S
 demod ........ done
 Es/N0 (dB): 24.3353 24.988 25.8578 26.2067 26.2162 26.2056 26.4491 26.5571
 ```
+Continuous decoding can be done with the following command:
+```
+while arecord -f S16_LE -c 1 -r 48000 - | ./decode - - ; do echo ; sleep 1 ; done
+```
 

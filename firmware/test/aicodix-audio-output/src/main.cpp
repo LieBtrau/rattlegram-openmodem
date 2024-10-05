@@ -32,17 +32,17 @@
 
 #include "ES8388Output.h"
 #include "ES8388.h"
-#include "QueueGenerator.h"
+#include "BufferSync.h"
 
 static const char *TAG = "main";
 static const uint32_t PIN_LED = 22;
 static ES8388Output *output;
-static QueueGenerator *modemOutput;
 
 typedef float value;
 typedef DSP::Complex<value> cmplx;
 static const int SAMPLE_RATE = 8000;
 Encoder<value, cmplx, SAMPLE_RATE> *encoder = nullptr;
+BufferSync *bufferSync = nullptr;
 
 // i2c control
 static ES8388 audioShield(33, 32);
@@ -54,11 +54,23 @@ static i2s_pin_config_t i2s_pin_config =
 		.data_in_num = 35	// data from audio codec
 };
 
+void sampleSink(int16_t samples[], int count)
+{
+	int16_t frames[2*count];
+	for (int i = 0; i < count; i++)
+	{
+		frames[2*i] = samples[i];	// left channel
+		frames[2*i+1] = 0;			// right channel
+	}
+	bufferSync->send(frames, sizeof(frames));
+}
+
 void setup()
 {
 	ESP_LOGI(TAG, "Build %s, %s %s\r\n", AUTO_VERSION, __DATE__, __TIME__);
 	pinMode(PIN_LED, OUTPUT);
 
+	bufferSync = new BufferSync(16);
 	// init ES8388
 	if (!audioShield.init())
 	{
@@ -76,16 +88,15 @@ void setup()
 
 	ESP_LOGI(TAG, "Starting I2S Output");
 	output = new ES8388Output(I2S_NUM_0, &i2s_pin_config);
-	modemOutput = new QueueGenerator(SAMPLE_RATE);
-	output->start(modemOutput);
+	output->start(bufferSync, SAMPLE_RATE);
 
 	ESP_LOGI(TAG, "Setup complete");
 }
 
 void sendPacket(const char *msg, int len)
 {
-	//const uint8_t callsign[9] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-	//encoder->spectrogram_block(callsign);
+	// const uint8_t callsign[9] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+	// encoder->spectrogram_block(callsign);
 
 	uint64_t call_sign = 0x12345678;
 	int packet_size = encoder->getPacketSize();
