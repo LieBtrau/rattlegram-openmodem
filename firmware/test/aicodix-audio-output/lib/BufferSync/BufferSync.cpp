@@ -21,8 +21,8 @@ BufferSync::~BufferSync()
 bool BufferSync::send(void *data, std::size_t size)
 {
     BufferSyncMessage message;
-    message.data = malloc(size);
-    if (message.data == NULL)
+    message.data = new uint8_t[size];
+    if (message.data == nullptr)
     {
         return false;
     }
