@@ -30,8 +30,10 @@
 #include <Arduino.h>
 #include "encode.hh"
 #include "BufferSync.h"
-#include "audio/audio.h"
+#include "I2SAudio/I2SAudio.h"
+#include "ES8388.h"
 
+static ES8388 audioShield(33, 32);
 static const char *TAG = "main";
 static const uint32_t PIN_LED = 22;
 
@@ -40,7 +42,7 @@ typedef DSP::Complex<value> cmplx;
 static const int SAMPLE_RATE = 8000;
 Encoder<value, cmplx, SAMPLE_RATE> *encoder = nullptr;
 BufferSync *bufferSync = nullptr;
-
+static I2SAudio *i2sAudio;
 
 void sampleSink(int16_t samples[], int count)
 {
@@ -59,11 +61,18 @@ void setup()
 	pinMode(PIN_LED, OUTPUT);
 
 	bufferSync = new BufferSync(16);
-	if(!audio_init(bufferSync, SAMPLE_RATE))
-	{
-		ESP_LOGE(TAG, "Failed to initialize audio");
-		return;
-	}
+    // init ES8388
+    if (!audioShield.init())
+    {
+        ESP_LOGE(TAG, "ES8388 not found");
+    }
+    audioShield.outputSelect(ES8388::OutSel::OUT2); // EARPHONE-jack on ESP32-A1S
+    audioShield.setOutputVolume(ES8388::OutSel::OUT2, 30);
+    audioShield.mixerSourceControl(DACOUT); // Use LIN and RIN as output
+
+	i2sAudio = new I2SAudio(SAMPLE_RATE, 27, 25, 26, 35);
+	i2sAudio->init();
+	i2sAudio->start_output(bufferSync);
 
 	int config_index = 4; // operating mode 23
 	encoder = new Encoder<value, cmplx, SAMPLE_RATE>();
