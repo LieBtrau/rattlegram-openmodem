@@ -12,20 +12,14 @@ class I2SOutput
 private:
     // i2s port
     i2s_port_t m_i2sPort;
-    // i2s pin settings
-    i2s_pin_config_t *m_pin_config;
     // I2S write task
     TaskHandle_t m_i2s_writerTaskHandle = NULL;
     // src of samples for us to play
     BufferSync *m_sample_generator;
 
-protected:
-    void start(i2s_config_t *i2sConfig, BufferSync *sample_generator);
-    void startTask();
-    virtual void configureI2S() = 0;
-
 public:
-    I2SOutput(i2s_port_t i2sPort, i2s_pin_config_t *pin_config) : m_i2sPort(i2sPort), m_pin_config(pin_config) {}
+    I2SOutput(i2s_port_t i2sPort) : m_i2sPort(i2sPort) {}
+    void start(BufferSync *sample_generator);
     void stop();
     friend void i2sWriterTask(void *param);
 };
