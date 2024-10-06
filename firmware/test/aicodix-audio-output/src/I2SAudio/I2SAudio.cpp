@@ -4,7 +4,18 @@
 
 static const char *TAG = "audio";
 
-I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_DOUT, int pin_DIN): m_sampleRate(sampleRate)
+/**
+ * @brief Construct a new I2SAudio::I2SAudio object
+ * 
+ * @param sampleRate Sample rate in Hz (e.g. 8000)
+ * @param pin_BCK I2S Bit Clock (BCK) pin
+ * @param pin_WS I2S Word Select (WS) pin
+ * @param pin_DOUT I2S Data Out (DOUT) pin (data from MCU to audio codec)
+ * @param pin_DIN I2S Data In (DIN) pin (data from audio codec to MCU)
+ */
+I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_DOUT, int pin_DIN): 
+    m_sampleRate(sampleRate), 
+    m_i2sPort(I2S_NUM_0)
 {
     m_i2sConfig = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX), // Only TX
@@ -33,6 +44,10 @@ I2SAudio::~I2SAudio()
     delete m_output;
 }
 
+/**
+ * @brief Configure the ESP32's I2S peripheral
+ * 
+ */
 void I2SAudio::init()
 {
     ESP_ERROR_CHECK(i2s_driver_install(m_i2sPort, &m_i2sConfig, 0, NULL));
@@ -43,15 +58,24 @@ void I2SAudio::init()
     delay(5);
 }
 
-void I2SAudio::start_output(BufferSync *dac_sample_generator)
+/**
+ * @brief Start the I2S output task
+ * 
+ * @param dac_sample_queue Queue of samples to be sent to the DAC output
+ */
+void I2SAudio::start_output(BufferSync *dac_sample_queue)
 {
     if(!m_output)
     {
         m_output = new I2SOutput(m_i2sPort);
     }
-    m_output->start(dac_sample_generator);
+    m_output->start(dac_sample_queue);
 }
 
+/**
+ * @brief Stop the I2S output task and the I2S peripheral
+ * 
+ */
 void I2SAudio::stop()
 {
     if(m_output)
