@@ -18,7 +18,7 @@ I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_D
     m_i2sPort(I2S_NUM_0)
 {
     m_i2sConfig = {
-        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX), // Only TX
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_RX),
         .sample_rate = sampleRate,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT, // 16-bit per channel
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // 2-channels
@@ -42,6 +42,7 @@ I2SAudio::~I2SAudio()
 {
     stop();
     delete m_output;
+    vQueueDelete(m_sample_sink);
 }
 
 /**
@@ -63,13 +64,17 @@ void I2SAudio::init()
  * 
  * @param dac_sample_queue Queue of samples to be sent to the DAC output
  */
-void I2SAudio::start_output(BufferSync *dac_sample_queue)
+void I2SAudio::start_output(std::size_t maxMessages)
 {
     if(!m_output)
     {
         m_output = new I2SOutput(m_i2sPort);
     }
-    m_output->start(dac_sample_queue);
+    if(!m_sample_sink)
+    {
+        m_sample_sink = xQueueCreate(maxMessages, sizeof(BufferSyncMessage));
+    }
+    m_output->start(m_sample_sink);
 }
 
 /**
@@ -85,4 +90,20 @@ void I2SAudio::stop()
     ESP_ERROR_CHECK(i2s_stop(m_i2sPort));
     ESP_ERROR_CHECK(i2s_zero_dma_buffer(m_i2sPort));
     ESP_ERROR_CHECK(i2s_driver_uninstall(m_i2sPort));
+}
+
+/**
+ * @brief Add samples to the I2S output queue
+ * 
+ * @param data Pointer to the samples
+ * @param size Size of the samples
+ * @return true if the samples were added to the queue
+ * @return false if the queue is full
+ */
+bool I2SAudio::addSinkSamples(uint8_t *data, std::size_t size)
+{
+    BufferSyncMessage message;
+    message.data = data;
+    message.size = size;
+    return xQueueSend(m_sample_sink, &message, portMAX_DELAY) == pdTRUE;
 }

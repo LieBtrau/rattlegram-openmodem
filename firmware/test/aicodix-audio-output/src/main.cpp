@@ -41,18 +41,25 @@ typedef float value;
 typedef DSP::Complex<value> cmplx;
 static const int SAMPLE_RATE = 8000;
 Encoder<value, cmplx, SAMPLE_RATE> *encoder = nullptr;
-BufferSync *bufferSync = nullptr;
 static I2SAudio *i2sAudio;
 
+/**
+ * @brief Callback function for the encoder to send samples to the I2S audio output
+ * @note This function will block until all samples are sent to the queue.
+ * @param samples 16-bit audio samples
+ * @param count the number of samples
+ */
 void sampleSink(int16_t samples[], int count)
 {
-	int16_t frames[2*count];
+	int16_t *frames= new int16_t[2*count];
+	size_t size = count * 2 * sizeof(int16_t);
+
 	for (int i = 0; i < count; i++)
 	{
 		frames[2*i] = samples[i];	// left channel
 		frames[2*i+1] = 0;			// right channel
 	}
-	bufferSync->send(frames, sizeof(frames));
+    i2sAudio->addSinkSamples(reinterpret_cast<uint8_t*>(frames), size);
 }
 
 void setup()
@@ -60,7 +67,6 @@ void setup()
 	ESP_LOGI(TAG, "Build %s, %s %s\r\n", AUTO_VERSION, __DATE__, __TIME__);
 	pinMode(PIN_LED, OUTPUT);
 
-	bufferSync = new BufferSync(16);
     // init ES8388
     if (!audioShield.init())
     {
@@ -72,7 +78,7 @@ void setup()
 
 	i2sAudio = new I2SAudio(SAMPLE_RATE, 27, 25, 26, 35);
 	i2sAudio->init();
-	i2sAudio->start_output(bufferSync);
+	i2sAudio->start_output(16);
 
 	int config_index = 4; // operating mode 23
 	encoder = new Encoder<value, cmplx, SAMPLE_RATE>();
