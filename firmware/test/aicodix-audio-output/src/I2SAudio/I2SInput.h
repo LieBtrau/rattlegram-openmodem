@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include "driver/i2s.h"
-#include "BufferSync.h"
 
 class I2SInput
 {

@@ -1,7 +1,5 @@
 #include "I2SAudio.h"
 
-#include "BufferSync.h"
-
 static const char *TAG = "audio";
 
 /**
