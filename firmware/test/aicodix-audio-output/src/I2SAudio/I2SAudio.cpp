@@ -6,16 +6,15 @@ static const char *TAG = "audio";
 
 /**
  * @brief Construct a new I2SAudio::I2SAudio object
- * 
+ *
  * @param sampleRate Sample rate in Hz (e.g. 8000)
  * @param pin_BCK I2S Bit Clock (BCK) pin
  * @param pin_WS I2S Word Select (WS) pin
  * @param pin_DOUT I2S Data Out (DOUT) pin (data from MCU to audio codec)
  * @param pin_DIN I2S Data In (DIN) pin (data from audio codec to MCU)
  */
-I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_DOUT, int pin_DIN): 
-    m_sampleRate(sampleRate), 
-    m_i2sPort(I2S_NUM_0)
+I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_DOUT, int pin_DIN) : m_sampleRate(sampleRate),
+                                                                                                    m_i2sPort(I2S_NUM_0)
 {
     m_i2sConfig = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_RX),
@@ -31,10 +30,10 @@ I2SAudio::I2SAudio(const uint32_t sampleRate, int pin_BCK, int pin_WS, int pin_D
         .fixed_mclk = (int)(sampleRate * 256)};
     m_i2s_pin_config =
         {
-            .bck_io_num = pin_BCK,      // Serial Clock (SCK)
-            .ws_io_num = pin_WS,        // Word Select (WS)
-            .data_out_num = pin_DOUT,   // data out to audio codec
-            .data_in_num = pin_DIN      // data from audio codec
+            .bck_io_num = pin_BCK,    // Serial Clock (SCK)
+            .ws_io_num = pin_WS,      // Word Select (WS)
+            .data_out_num = pin_DOUT, // data out to audio codec
+            .data_in_num = pin_DIN    // data from audio codec
         };
 }
 
@@ -47,7 +46,7 @@ I2SAudio::~I2SAudio()
 
 /**
  * @brief Configure the ESP32's I2S peripheral
- * 
+ *
  */
 void I2SAudio::init()
 {
@@ -61,16 +60,16 @@ void I2SAudio::init()
 
 /**
  * @brief Start the I2S output task
- * 
+ *
  * @param dac_sample_queue Queue of samples to be sent to the DAC output
  */
 void I2SAudio::start_output(std::size_t maxMessages)
 {
-    if(!m_output)
+    if (!m_output)
     {
         m_output = new I2SOutput(m_i2sPort);
     }
-    if(!m_sample_sink)
+    if (!m_sample_sink)
     {
         m_sample_sink = xQueueCreate(maxMessages, sizeof(BufferSyncMessage));
     }
@@ -78,12 +77,30 @@ void I2SAudio::start_output(std::size_t maxMessages)
 }
 
 /**
+ * @brief Start the I2S input task
+ *
+ * @param adc_sample_queue Queue of samples to be received from the ADC input
+ */
+void I2SAudio::start_input(std::size_t maxMessages, size_t maxSamples)
+{
+    if (!m_input)
+    {
+        m_input = new I2SInput(m_i2sPort, &m_i2s_pin_config);
+    }
+    if (!m_sample_source)
+    {
+        m_sample_source = xQueueCreate(maxMessages, sizeof(BufferSyncMessage));
+    }
+    m_input->start(m_sample_source, maxSamples);
+}
+
+/**
  * @brief Stop the I2S output task and the I2S peripheral
- * 
+ *
  */
 void I2SAudio::stop()
 {
-    if(m_output)
+    if (m_output)
     {
         m_output->stop();
     }
@@ -94,16 +111,45 @@ void I2SAudio::stop()
 
 /**
  * @brief Add samples to the I2S output queue
- * 
- * @param data Pointer to the samples
- * @param size Size of the samples
+ *
+ * @param samples Pointer to the array of samples
+ * @param count Number of samples
+ * @param channel AudioSinkChannel::LEFT, AudioSinkChannel::RIGHT, or AudioSinkChannel::BOTH
  * @return true if the samples were added to the queue
  * @return false if the queue is full
  */
-bool I2SAudio::addSinkSamples(uint8_t *data, std::size_t size)
+bool I2SAudio::addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel)
+{
+    int16_t *frames = new int16_t[2 * count];
+    if(frames == nullptr)
+    {
+        return false;
+    }
+    for (int i = 0; i < count; i++)
+    {
+        frames[2 * i] = (channel != AudioSinkChannel::RIGHT ? samples[i] : 0);    // left channel
+        frames[2 * i + 1] = (channel != AudioSinkChannel::LEFT ? samples[i] : 0); // right channel
+    }
+
+    BufferSyncMessage message;
+    message.data = reinterpret_cast<uint8_t*>(frames);
+    message.size = (count * 2) * sizeof(int16_t);
+    return xQueueSend(m_sample_sink, &message, portMAX_DELAY) == pdTRUE;
+}
+
+/**
+ * @brief Get samples from the I2S input queue
+ *
+ * @param data Pointer to the array of samples
+ * @return size_t Number of samples received
+ */
+size_t I2SAudio::getSourceSamples(uint8_t **data)
 {
     BufferSyncMessage message;
-    message.data = data;
-    message.size = size;
-    return xQueueSend(m_sample_sink, &message, portMAX_DELAY) == pdTRUE;
+    if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
+    {
+        *data = message.data;
+        return message.size;
+    }
+    return 0;
 }

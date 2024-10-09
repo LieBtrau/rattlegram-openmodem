@@ -51,15 +51,7 @@ static I2SAudio *i2sAudio;
  */
 void sampleSink(int16_t samples[], int count)
 {
-	int16_t *frames= new int16_t[2*count];
-	size_t size = count * 2 * sizeof(int16_t);
-
-	for (int i = 0; i < count; i++)
-	{
-		frames[2*i] = samples[i];	// left channel
-		frames[2*i+1] = 0;			// right channel
-	}
-    i2sAudio->addSinkSamples(reinterpret_cast<uint8_t*>(frames), size);
+    i2sAudio->addSinkSamples(samples, count, I2SAudio::AudioSinkChannel::LEFT);
 }
 
 void setup()
