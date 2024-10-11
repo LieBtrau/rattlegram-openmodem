@@ -30,7 +30,7 @@
 #include <Arduino.h>
 #include "encode.hh"
 #include "BufferSync.h"
-#include "I2SAudio/I2SAudio.h"
+#include "I2SAudio.h"
 #include "ES8388.h"
 
 static ES8388 audioShield(33, 32);
