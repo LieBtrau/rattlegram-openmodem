@@ -20,3 +20,4 @@
   * support noise cancellation
   * support AGC
   * doesn't use an audio codec.  Uses opamp circuits for audio filtering
+* [Turn your Android phone into a modern ham radio transceiver](https://kv4p.com)
