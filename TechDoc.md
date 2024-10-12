@@ -25,6 +25,11 @@ The OFDM modem will run at 8kHz.  At 48kHz, the ESP32 is too slow to encode the 
 ## Options
 * ES8388 : Used in Aithinker Audio toolkit, stereo in/out
     * available at JLCPCB, $0.99/pce
+    * Documentation is mediocre:
+      * The names in the block drawing don't match register names in the datasheet.  
+      * There are undocumented register settings.
 * WM8978 : Used in M5Stack, stereo in/out
     * JLCPCB : not available
 * SGTL5000 : Used in Teensy Audio shield, stereo in/out
+    * Good library support from PJRC
+    * €3.50/pce at JLCPCB
