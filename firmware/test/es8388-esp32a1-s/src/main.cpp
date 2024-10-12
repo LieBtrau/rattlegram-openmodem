@@ -57,15 +57,16 @@ void loop()
 /**
  * ESP32-A1S : Analog audio from the LINEIN will be looped back to the EARPHONE-jack.
  * 
- * Connect laptop to LINEIN of ESP32-A1S.
- * Connect headphones to EARPHONE-jack of ESP32-A1S.
- * Alternatively, connect EARPHONE-jack to laptop (be careful with cable-splitters).  
+ * 1. Power the ESP32-A1S with using the BAT connector from a 3.7V LiPo battery or lab power supply.  Powering from USB causes a lot of noise because of ground loops.
+ * 2. Connect laptop to LINEIN of ESP32-A1S.
+ * 3. Connect headphones to EARPHONE-jack of ESP32-A1S.
+ * Alternatively, connect laptop to EARPHONE-jack (be careful with cable-splitters).  
  * My splitter shorts the left and right output channel to the single microphone input of the laptop.
  */
 void setup_analog_loopback()
 {
 	audioShield.inputSelect(IN2);					// stereo LIN2/RIN2 (LINEIN on ESP32-A1S)
-	audioShield.setInputGain(20);					// Micamp gain
+	audioShield.setInputGain(8);					// Micamp gain
 	audioShield.outputSelect(ES8388::OutSel::OUT2); // EARPHONE-jack on ESP32-A1S
 	audioShield.setOutputVolume(ES8388::OutSel::OUT2, 30);
 	audioShield.mixerSourceSelect(MIXIN2, MIXIN2); // Select LIN and RIN source
