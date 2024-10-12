@@ -8,8 +8,8 @@ using namespace std;
 
 struct BufferSyncMessage
 {
-    uint8_t *data;
-    std::size_t size;
+    uint8_t *data;      //!< Pointer to the array of samples
+    std::size_t size;   //!< Number of bytes in the array
 };
 
 class I2SAudio
@@ -37,6 +37,8 @@ public:
     void start_output(size_t maxMessages);
     void start_input(size_t maxMessages, size_t maxSamples);
     bool addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel);
-    size_t getSourceSamples(uint8_t **data);
+    bool addRawSinkSamples(uint8_t samples[], int count);
+    void getSourceSamples(int16_t *samples[], size_t& count);
+    void getRawSourceSamples(uint8_t *samples[], size_t& count);
     void stop();
 };

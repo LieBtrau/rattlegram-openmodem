@@ -116,38 +116,52 @@ void I2SAudio::stop()
  * @return true if the samples were added to the queue
  * @return false if the queue is full
  */
-bool I2SAudio::addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel)
+bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChannel channel)
 {
-    int16_t *frames = new int16_t[2 * count];
-    if(frames == nullptr)
+    int16_t *frames = new int16_t[2 * sample_count];
+    if (frames == nullptr)
     {
         return false;
     }
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < sample_count; i++)
     {
         frames[2 * i] = (channel != AudioSinkChannel::RIGHT ? samples[i] : 0);    // left channel
         frames[2 * i + 1] = (channel != AudioSinkChannel::LEFT ? samples[i] : 0); // right channel
     }
 
+    return addRawSinkSamples(reinterpret_cast<uint8_t *>(frames), 2 * sample_count * sizeof(int16_t));
+}
+
+bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
+{
     BufferSyncMessage message;
-    message.data = reinterpret_cast<uint8_t*>(frames);
-    message.size = (count * 2) * sizeof(int16_t);
+    message.data = samples;
+    message.size = count;
     return xQueueSend(m_sample_sink, &message, portMAX_DELAY) == pdTRUE;
 }
 
 /**
  * @brief Get samples from the I2S input queue
  *
- * @param data Pointer to the array of samples
- * @return size_t Number of samples received
+ * @param samples Pointer to the array of samples
+ * @param count Number of samples
  */
-size_t I2SAudio::getSourceSamples(uint8_t **data)
+void I2SAudio::getSourceSamples(int16_t *samples[], size_t &count)
 {
     BufferSyncMessage message;
     if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
     {
-        *data = message.data;
-        return message.size;
+        *samples = reinterpret_cast<int16_t *>(message.data);
+        count = message.size / sizeof(int16_t);
     }
-    return 0;
+}
+
+void I2SAudio::getRawSourceSamples(uint8_t *samples[], size_t& byte_count)
+{
+    BufferSyncMessage message;
+    if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
+    {
+        *samples = message.data;
+        byte_count = message.size;
+    }
 }

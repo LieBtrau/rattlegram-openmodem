@@ -68,7 +68,14 @@ bool ES8388::init()
   res &= write_reg(ES8388_REG::DACCONTROL3, 0x04);  // mute analog outputs for both channels
   res &= write_reg(ES8388_REG::CONTROL2, 0x50); // not sure what this really does.  It sets the undocumented bit 6.
   res &= write_reg(ES8388_REG::CHIPPOWER, 0x00);  // power up all parts of the chip
-  res &= write_reg(ES8388_REG::MASTERMODE, 0x00); // set to slave mode (receive MCLK from external source)
+
+  // Disable the internal DLL to improve 8K sample rate (undocumented)
+  //https://github.com/pschatzmann/arduino-audio-driver/blob/main/src/Driver/es8388/es8388.c
+  // res  &= write_reg(0x35, 0xA0);
+  // res  &= write_reg(0x37, 0xD0);
+  // res  &= write_reg(0x39, 0xD0);
+
+  res  &= write_reg(ES8388_REG::MASTERMODE, 0x00); // set to slave mode (receive MCLK from external source)
 
   res &= write_reg(ES8388_REG::DACPOWER, 0xC0); // disable DAC and disable Lout/Rout/1/2
   res &= write_reg(ES8388_REG::CONTROL1, 0x12); // Enfr=0
@@ -89,13 +96,25 @@ bool ES8388::init()
   res &= write_reg(ES8388_REG::DACCONTROL4, 0x00);  // LDACVOL
   res &= write_reg(ES8388_REG::DACCONTROL5, 0x00);  // RDACVOL
 
-  /* power down ADC, we don't need it */
-  res &= write_reg(ES8388_REG::ADCPOWER, 0xff);
-
   /* power up and enable DAC; */
   res &= write_reg(ES8388_REG::DACPOWER, 0x3c);//enable DAC (L&R) and enable Lout/Rout/1/2
   res &= write_reg(ES8388_REG::DACCONTROL3, 0x00);//DAC volume control, unmute both DAC channels
 
+  /* power down ADC */
+  res &= write_reg(ES8388_REG::ADCPOWER, 0xff);
+  /* Input = LIN2 & RIN2 */
+  res &= write_reg(ES8388_REG::ADCCONTROL2, 0x50);
+  /* Undocumented default value */
+  res &= write_reg(ES8388_REG::ADCCONTROL3, 0x02);
+  // I2S-format : 16-bit serial audio data word length, left justify serial audio data format
+  res &= write_reg(ES8388_REG::ADCCONTROL4, 0x0d);
+  // MCLK / Fs = 256
+  res &= write_reg(ES8388_REG::ADCCONTROL5, 0x02);
+  // ADC volume control: 0dB (maximum, unattenuated)
+  res &= write_reg(ES8388_REG::ADCCONTROL8, 0x00);  //LADCVOL
+  res &= write_reg(ES8388_REG::ADCCONTROL9, 0x00);  //RADCVOL
+  // Power ADC on, disable MIC-BIAS
+  res &= write_reg(ES8388_REG::ADCPOWER, 0x09); 
   /* set up MCLK) */
   PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
   WRITE_PERI_REG(PIN_CTRL, 0xFFF0);
@@ -272,15 +291,25 @@ bool ES8388::setALCmode(alcmodesel_t alc)
   return res;
 }
 
+
 // MIXIN1 – direct IN1 (default)
 // MIXIN2 – direct IN2
 // MIXRES – reserved es8388
 // MIXADC – ADC/ALC input (after mic amplifier)
-bool ES8388::mixerSourceSelect(mixsel_t LMIXSEL, mixsel_t RMIXSEL)
+
+/**
+ * @brief Select source for LIN and RIN
+ * 
+ * @param LIN 
+ * @param RIN 
+ * @return true 
+ * @return false 
+ */
+bool ES8388::mixerSourceSelect(mixsel_t LIN, mixsel_t RIN)
 {
-  bool res = true;
+bool res = true;  
   uint8_t _reg;
-  _reg = (LMIXSEL << 3) | RMIXSEL;
+  _reg = (LIN << 3) | RIN;
   res &= write_reg(ES8388_REG::DACCONTROL16, _reg);
   return res;
 }
