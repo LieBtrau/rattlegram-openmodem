@@ -28,6 +28,7 @@ The OFDM modem will run at 8kHz.  At 48kHz, the ESP32 is too slow to encode the 
     * Documentation is mediocre:
       * The names in the block drawing don't match register names in the datasheet.  
       * There are undocumented register settings.
+      * <img src="Audio-1kHz_Fs-8kHz.png" width="500" /> : poor performance of a 1kHz sine wave at 8kHz sampling rate (sampled by laptop sound card at 48kHz)
 * WM8978 : Used in M5Stack, stereo in/out
     * JLCPCB : not available
 * SGTL5000 : Used in Teensy Audio shield, stereo in/out
