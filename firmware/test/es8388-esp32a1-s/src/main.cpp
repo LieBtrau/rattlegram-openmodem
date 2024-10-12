@@ -38,6 +38,7 @@ static ES8388 audioShield(33, 32);
 static I2SAudio *i2sAudio = nullptr;
 void setup_analog_loopback();
 void setup_i2s_loopback();
+void i2s_loopback();
 
 void setup()
 {
@@ -48,18 +49,19 @@ void setup()
 	{
 		ESP_LOGE(TAG, "ES8388 not found");
 	}
-	setup_analog_loopback();
-	// setup_i2s_loopback();
-	// i2sAudio = new I2SAudio(8000, 27, 25, 26, 35);
-	// i2sAudio->init();
-	// i2sAudio->start_output(16);
-	// i2sAudio->start_input(16, 128);
+	//setup_analog_loopback();
+	setup_i2s_loopback();
+	i2sAudio = new I2SAudio(8000, 27, 25, 26, 35);
+	i2sAudio->init();
+	i2sAudio->start_output(16);
+	i2sAudio->start_input(16, 128);
 	ESP_LOGI(TAG, "Setup complete");
 }
 
 void loop()
 {
 	// nothing to do here - everything is taken care of by tasks
+	i2s_loopback();
 }
 
 /**
