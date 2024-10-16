@@ -21,3 +21,6 @@
   * support AGC
   * doesn't use an audio codec.  Uses opamp circuits for audio filtering
 * [Turn your Android phone into a modern ham radio transceiver](https://kv4p.com)
+* [SHARI construction manual](https://wiki.fm-funknetz.de/lib/exe/fetch.php?media=fm-funknetz:technik:shari_construction_manual_v1-07.pdf)
+  * Pairs a USB audio codec with a DRA818V module.
+  * Includes a LPF for the antenna output.
