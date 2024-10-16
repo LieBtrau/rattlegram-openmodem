@@ -10,7 +10,7 @@ void i2sReaderTask(void *param)
 {
     I2SInput *sampler = (I2SInput *)param;
     size_t bytesRead = 0;
-    int16_t *i2sData;
+    uint8_t *i2sData;
     for (;;)
     {
         if (wanttoStopSampling)
@@ -20,11 +20,12 @@ void i2sReaderTask(void *param)
         }
         else
         {
-            i2sData = new int16_t[sampler->m_sampleCount];
-            if (i2sData!=nullptr && i2s_read(sampler->m_i2sPort, i2sData, sampler->m_sampleCount << 1, &bytesRead, portMAX_DELAY) == ESP_OK)
+            size_t bytecount = sampler->m_sampleCount * 2;
+            i2sData = new uint8_t[bytecount];
+            if (i2sData!=nullptr && i2s_read(sampler->m_i2sPort, i2sData, bytecount, &bytesRead, portMAX_DELAY) == ESP_OK)
             {
                 BufferSyncMessage message;
-                message.data = reinterpret_cast<uint8_t*>(i2sData);
+                message.data = i2sData;
                 message.size = bytesRead;
                 xQueueSend(sampler->m_sample_source, &message, portMAX_DELAY);
             }

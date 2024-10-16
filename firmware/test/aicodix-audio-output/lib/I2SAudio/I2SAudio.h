@@ -38,7 +38,7 @@ public:
     void start_input(size_t maxMessages, size_t maxSamples);
     bool addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel);
     bool addRawSinkSamples(uint8_t samples[], int count);
-    void getSourceSamples(int16_t *samples[], size_t& count);
+    void getSourceSamples(int16_t* left_samples[], int16_t* right_samples[], size_t &sample_count);
     void getRawSourceSamples(uint8_t *samples[], size_t& count);
     void stop();
 };

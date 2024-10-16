@@ -54,7 +54,7 @@ void setup()
 	i2sAudio = new I2SAudio(8000, 27, 25, 26, 35);
 	i2sAudio->init();
 	i2sAudio->start_output(16);
-	i2sAudio->start_input(16, 128);
+	i2sAudio->start_input(16, 256);
 	ESP_LOGI(TAG, "Setup complete");
 }
 
@@ -94,8 +94,15 @@ void setup_i2s_loopback()
 
 void i2s_loopback()
 {
-	uint8_t *samples;
-	size_t count;
-	i2sAudio->getRawSourceSamples(&samples, count);
-	i2sAudio->addRawSinkSamples(samples, count);
+	// uint8_t *samples;
+	// size_t count;
+	// i2sAudio->getRawSourceSamples(&samples, count);
+	// i2sAudio->addRawSinkSamples(samples, count);
+
+	int16_t* left_samples, *right_samples;
+	size_t sample_count;
+	i2sAudio->getSourceSamples(&left_samples, &right_samples, sample_count);
+	i2sAudio->addSinkSamples(left_samples, sample_count, I2SAudio::AudioSinkChannel::LEFT);
+	delete[] left_samples;
+	delete[] right_samples;
 }
