@@ -163,48 +163,55 @@ void I2SAudio::getSourceSamples(int16_t *left_samples[], int16_t *right_samples[
 {
     BufferSyncMessage message;
     int16_t *samples = nullptr;
-    if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
+    uint8_t *byte_data = nullptr;
+	size_t byte_count;
+
+    getRawSourceSamples(&byte_data, byte_count);
+    if (byte_data == nullptr || byte_count==0)
     {
-        samples = reinterpret_cast<int16_t *>(message.data);
-        size_t total_sample_count = message.size / sizeof(int16_t); // total number of samples for left + right channels
-        sample_count_per_channel = total_sample_count / 2;
-
-        // ESP_LOGI(TAG, "Incoming total Samples: %d", total_sample_count);
-        // for (int i = 0; i < total_sample_count; i++)
-        // {
-        //     printf("%04x ", (uint16_t)samples[i]);
-        //     if (i % 32 == 31)
-        //     {
-        //         printf("\n");
-        //     }
-        // }
-        // printf("\n");
-
-        *left_samples = new int16_t[sample_count_per_channel];
-        *right_samples = new int16_t[sample_count_per_channel];
-        if (*left_samples == nullptr || *right_samples == nullptr)
-        {
-            delete[] message.data;
-            return;
-        }
-        for (int i = 0; i < total_sample_count; i++)
-        {
-            if (i % 2 == 0)
-            {
-                (*left_samples)[i / 2] = samples[i];
-            }
-            else
-            {
-                (*right_samples)[i / 2] = samples[i];
-            }
-        }
-        delete[] message.data;
+        return;
     }
+    samples = reinterpret_cast<int16_t *>(byte_data);
+    size_t total_sample_count = byte_count / sizeof(int16_t); // total number of samples for left + right channels
+    sample_count_per_channel = total_sample_count / 2;
+
+    // ESP_LOGI(TAG, "Incoming total Samples: %d", total_sample_count);
+    // for (int i = 0; i < total_sample_count; i++)
+    // {
+    //     printf("%04x ", (uint16_t)samples[i]);
+    //     if (i % 32 == 31)
+    //     {
+    //         printf("\n");
+    //     }
+    // }
+    // printf("\n");
+
+    *left_samples = new int16_t[sample_count_per_channel];
+    *right_samples = new int16_t[sample_count_per_channel];
+    if (*left_samples == nullptr || *right_samples == nullptr)
+    {
+        delete[] message.data;
+        return;
+    }
+    for (int i = 0; i < total_sample_count; i++)
+    {
+        if (i % 2 == 0)
+        {
+            (*left_samples)[i / 2] = samples[i];
+        }
+        else
+        {
+            (*right_samples)[i / 2] = samples[i];
+        }
+    }
+    delete[] message.data;
 }
 
 void I2SAudio::getRawSourceSamples(uint8_t *samples[], size_t &byte_count)
 {
     BufferSyncMessage message;
+    *samples = nullptr;
+    byte_count = 0;
     if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
     {
         *samples = message.data;
