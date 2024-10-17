@@ -39,7 +39,9 @@ I2SAudio::~I2SAudio()
 {
     stop();
     delete m_output;
+    delete m_input;
     vQueueDelete(m_sample_sink);
+    vQueueDelete(m_sample_source);
 }
 
 /**
@@ -79,7 +81,7 @@ void I2SAudio::start_output(std::size_t maxMessages)
  *
  * @param adc_sample_queue Queue of samples to be received from the ADC input
  */
-void I2SAudio::start_input(std::size_t maxMessages, size_t maxSamples)
+void I2SAudio::start_input(std::size_t maxMessages)
 {
     if (!m_input)
     {
@@ -89,7 +91,7 @@ void I2SAudio::start_input(std::size_t maxMessages, size_t maxSamples)
     {
         m_sample_source = xQueueCreate(maxMessages, sizeof(BufferSyncMessage));
     }
-    m_input->start(m_sample_source, maxSamples);
+    m_input->start(m_sample_source);
 }
 
 /**
@@ -118,11 +120,7 @@ void I2SAudio::stop()
  */
 bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChannel channel)
 {
-    int16_t *frames = new int16_t[2 * sample_count];
-    if (frames == nullptr)
-    {
-        return false;
-    }
+    int16_t frames[2 * sample_count];
     for (int i = 0; i < sample_count; i++)
     {
         frames[2 * i] = (channel != AudioSinkChannel::RIGHT ? samples[i] : 0);    // left channel
@@ -147,8 +145,13 @@ bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChan
 bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
 {
     BufferSyncMessage message;
-    message.data = samples;
+    if(count > sizeof(message.data))
+    {
+        ESP_LOGE(TAG, "Sample count exceeds buffer size");
+        return false;
+    }
     message.size = count;
+    memcpy(message.data, samples, count);
     return xQueueSend(m_sample_sink, &message, portMAX_DELAY) == pdTRUE;
 }
 
@@ -159,20 +162,22 @@ bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
  * @param right_samples Pointer to the array of right channel samples
  * @param sample_count Number of samples (left_samples and right_samples should have the same count)
  */
-void I2SAudio::getSourceSamples(int16_t *left_samples[], int16_t *right_samples[], size_t &sample_count_per_channel)
+bool I2SAudio::getSourceSamples(int16_t left_samples[], int16_t right_samples[], size_t &sample_count_per_channel)
 {
     BufferSyncMessage message;
     int16_t *samples = nullptr;
-    uint8_t *byte_data = nullptr;
-	size_t byte_count;
 
-    getRawSourceSamples(&byte_data, byte_count);
-    if (byte_data == nullptr || byte_count==0)
+    getRawSourceSamples(message.data, message.size);
+    if (message.size == 0)
     {
-        return;
+        return false;
     }
-    samples = reinterpret_cast<int16_t *>(byte_data);
-    size_t total_sample_count = byte_count / sizeof(int16_t); // total number of samples for left + right channels
+    samples = reinterpret_cast<int16_t *>(message.data);
+    size_t total_sample_count = message.size / sizeof(int16_t); // total number of samples for left + right channels
+    if(sample_count_per_channel < total_sample_count / 2)
+    {
+        return false;
+    }
     sample_count_per_channel = total_sample_count / 2;
 
     // ESP_LOGI(TAG, "Incoming total Samples: %d", total_sample_count);
@@ -186,35 +191,27 @@ void I2SAudio::getSourceSamples(int16_t *left_samples[], int16_t *right_samples[
     // }
     // printf("\n");
 
-    *left_samples = new int16_t[sample_count_per_channel];
-    *right_samples = new int16_t[sample_count_per_channel];
-    if (*left_samples == nullptr || *right_samples == nullptr)
-    {
-        delete[] message.data;
-        return;
-    }
     for (int i = 0; i < total_sample_count; i++)
     {
         if (i % 2 == 0)
         {
-            (*left_samples)[i / 2] = samples[i];
+            left_samples[i / 2] = samples[i];
         }
         else
         {
-            (*right_samples)[i / 2] = samples[i];
+            right_samples[i / 2] = samples[i];
         }
     }
-    delete[] message.data;
+    return true;
 }
 
-void I2SAudio::getRawSourceSamples(uint8_t *samples[], size_t &byte_count)
+void I2SAudio::getRawSourceSamples(uint8_t samples[], size_t &byte_count)
 {
     BufferSyncMessage message;
-    *samples = nullptr;
     byte_count = 0;
     if (xQueueReceive(m_sample_source, &message, portMAX_DELAY) == pdTRUE)
     {
-        *samples = message.data;
+        mempcpy(samples, message.data, message.size);
         byte_count = message.size;
     }
 }

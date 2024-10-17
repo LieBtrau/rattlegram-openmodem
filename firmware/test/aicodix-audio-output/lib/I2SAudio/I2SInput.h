@@ -12,12 +12,10 @@ private:
     TaskHandle_t m_i2s_readerTaskHandle = NULL;
     // src of samples for us to play
     xQueueHandle m_sample_source;
-    // Number of samples in each I2S read
-    size_t m_sampleCount;
 
 public:
     I2SInput(i2s_port_t i2sPort, i2s_pin_config_t *pin_config) : m_i2sPort(i2sPort){};
-    void start(xQueueHandle sample_source, size_t maxSamples);
+    void start(xQueueHandle sample_source);
     void stop();
     friend void i2sReaderTask(void *param);
 };

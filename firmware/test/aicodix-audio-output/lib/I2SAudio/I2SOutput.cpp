@@ -26,8 +26,6 @@ void i2sWriterTask(void *param)
                 // write data to the i2s peripheral
                 //Wait portMAX_DELAY for the I2S peripheral to become available, so bytes written will always be equal to message.size
                 ESP_ERROR_CHECK(i2s_write(output->m_i2sPort, message.data, message.size, &bytesWritten, portMAX_DELAY));
-                // Don't forget to free the buffer
-                delete[] message.data;
             }
         }
         taskYIELD();

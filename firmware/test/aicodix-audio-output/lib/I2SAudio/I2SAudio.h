@@ -6,16 +6,18 @@
 
 using namespace std;
 
+static const size_t SAMPLE_BUFFER_SIZE = 256;
+
 struct BufferSyncMessage
 {
-    uint8_t *data;      //!< Pointer to the array of samples
-    std::size_t size;   //!< Number of bytes in the array
+    uint8_t data[SAMPLE_BUFFER_SIZE];      //!< Pointer to the array of samples
+    size_t size;                     
 };
 
 class I2SAudio
 {
 private:
-     const i2s_port_t m_i2sPort;
+    const i2s_port_t m_i2sPort;
     i2s_config_t m_i2sConfig;
     i2s_pin_config_t m_i2s_pin_config;
     const uint32_t m_sampleRate;
@@ -35,10 +37,10 @@ public:
     ~I2SAudio();
     void init();
     void start_output(size_t maxMessages);
-    void start_input(size_t maxMessages, size_t maxSamples);
+    void start_input(size_t maxMessages);
     bool addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel);
     bool addRawSinkSamples(uint8_t samples[], int count);
-    void getSourceSamples(int16_t* left_samples[], int16_t* right_samples[], size_t &sample_count);
-    void getRawSourceSamples(uint8_t *samples[], size_t& count);
+    bool getSourceSamples(int16_t left_samples[], int16_t right_samples[], size_t &sample_count_per_channel);
+    void getRawSourceSamples(uint8_t samples[], size_t& count);
     void stop();
 };
