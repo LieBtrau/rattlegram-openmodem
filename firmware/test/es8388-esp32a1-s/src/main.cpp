@@ -30,12 +30,14 @@
 #include <Arduino.h>
 #include "ES8388.h"
 #include "I2SAudio.h"
+#include "AsyncDelay.h"
 
 static const char *TAG = "main";
 
 // i2c control
 static ES8388 audioShield(33, 32);
 static I2SAudio *i2sAudio = nullptr;
+static AsyncDelay delaytimer;
 void setup_analog_loopback();
 void setup_i2s_loopback();
 void i2s_loopback();
@@ -55,6 +57,8 @@ void setup()
 	i2sAudio->init();
 	i2sAudio->start_output(16);
 	i2sAudio->start_input(16, 256);
+
+	delaytimer.start(1000, AsyncDelay::MILLIS);
 	ESP_LOGI(TAG, "Setup complete");
 }
 
@@ -62,6 +66,11 @@ void loop()
 {
 	// nothing to do here - everything is taken care of by tasks
 	i2s_loopback();
+	if (delaytimer.isExpired())
+	{
+		delaytimer.repeat();
+		ESP_LOGI(TAG, "Free heap: %d", ESP.getFreeHeap());
+	}
 }
 
 /**
