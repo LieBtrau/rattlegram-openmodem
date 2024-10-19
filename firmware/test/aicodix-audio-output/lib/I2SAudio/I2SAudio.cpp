@@ -127,19 +127,21 @@ bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChan
         frames[2 * i + 1] = (channel != AudioSinkChannel::LEFT ? samples[i] : 0); // right channel
     }
 
-    // print samples
-    // ESP_LOGI(TAG, "Outgoing total sample count: %d", 2 * sample_count);
-    // for (int i = 0; i < 2 * sample_count; i++)
-    // {
-    //     printf("%04x ", (uint16_t)frames[i]);
-    //     if (i % 32 == 31)
-    //     {
-    //         printf("\n");
-    //     }
-    // }
-    // printf("\n");
+    // Send samples in chunks of SAMPLE_BUFFER_SIZE
+    size_t byte_count = 2 * sample_count * sizeof(int16_t);
+    uint8_t *byte_samples = reinterpret_cast<uint8_t *>(frames);
 
-    return addRawSinkSamples(reinterpret_cast<uint8_t *>(frames), 2 * sample_count * sizeof(int16_t));
+    while(byte_count > 0)
+    {
+        size_t bytes_to_send = byte_count > SAMPLE_BUFFER_SIZE ? SAMPLE_BUFFER_SIZE : byte_count;
+        if(!addRawSinkSamples(byte_samples, bytes_to_send))
+        {
+            return false;
+        }
+        byte_samples += bytes_to_send;
+        byte_count -= bytes_to_send;
+    }
+    return true;
 }
 
 bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
