@@ -8,6 +8,12 @@ using namespace std;
 
 static const size_t SAMPLE_BUFFER_SIZE = 256;
 
+/**
+ * @brief Structure to hold the buffer of samples and its size
+ * @note I implemented this structure before with dyanmic memory allocation, but it crashed the ESP32 every 100s or so.  So the 
+ *      data member has been changed from a pointer to an array with a fixed size.
+ *      Dynamic memory allocation is not recommended in real-time systems like this.
+ */
 struct BufferSyncMessage
 {
     uint8_t data[SAMPLE_BUFFER_SIZE];      //!< Pointer to the array of samples
