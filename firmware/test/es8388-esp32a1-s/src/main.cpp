@@ -108,8 +108,8 @@ void i2s_loopback()
 	// i2sAudio->getRawSourceSamples(&samples, count);
 	// i2sAudio->addRawSinkSamples(samples, count);
 
-	int16_t left_samples[256], right_samples[256];
-	size_t sample_count=256;
-	i2sAudio->getSourceSamples(left_samples, right_samples, sample_count);
-	i2sAudio->addSinkSamples(left_samples, sample_count, I2SAudio::AudioSinkChannel::LEFT);
+	int16_t left_samples[256];
+	size_t sample_count=sizeof(left_samples)/sizeof(left_samples[0]);
+	i2sAudio->getSourceSamples(left_samples, sample_count, I2SAudio::AudioChannel::LEFT);
+	i2sAudio->addSinkSamples(left_samples, sample_count, I2SAudio::AudioChannel::LEFT);
 }

@@ -114,27 +114,27 @@ void I2SAudio::stop()
  *
  * @param samples Pointer to the array of samples
  * @param count Number of samples
- * @param channel AudioSinkChannel::LEFT, AudioSinkChannel::RIGHT, or AudioSinkChannel::BOTH (copy data to both channels)
+ * @param channel AudioChannel::LEFT, AudioChannel::RIGHT, or AudioChannel::BOTH (copy data to both channels)
  * @return true if the samples were added to the queue
  * @return false if the queue is full
  */
-bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChannel channel)
+bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioChannel channel)
 {
     int16_t frames[2 * sample_count];
     for (int i = 0; i < sample_count; i++)
     {
-        frames[2 * i] = (channel != AudioSinkChannel::RIGHT ? samples[i] : 0);    // left channel
-        frames[2 * i + 1] = (channel != AudioSinkChannel::LEFT ? samples[i] : 0); // right channel
+        frames[2 * i] = (channel != AudioChannel::RIGHT ? samples[i] : 0);    // left channel
+        frames[2 * i + 1] = (channel != AudioChannel::LEFT ? samples[i] : 0); // right channel
     }
 
     // Send samples in chunks of SAMPLE_BUFFER_SIZE
     size_t byte_count = 2 * sample_count * sizeof(int16_t);
     uint8_t *byte_samples = reinterpret_cast<uint8_t *>(frames);
 
-    while(byte_count > 0)
+    while (byte_count > 0)
     {
         size_t bytes_to_send = byte_count > SAMPLE_BUFFER_SIZE ? SAMPLE_BUFFER_SIZE : byte_count;
-        if(!addRawSinkSamples(byte_samples, bytes_to_send))
+        if (!addRawSinkSamples(byte_samples, bytes_to_send))
         {
             return false;
         }
@@ -147,7 +147,7 @@ bool I2SAudio::addSinkSamples(int16_t samples[], int sample_count, AudioSinkChan
 bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
 {
     BufferSyncMessage message;
-    if(count > sizeof(message.data))
+    if (count > sizeof(message.data))
     {
         ESP_LOGE(TAG, "Sample count exceeds buffer size");
         return false;
@@ -160,50 +160,46 @@ bool I2SAudio::addRawSinkSamples(uint8_t samples[], int count)
 /**
  * @brief Get samples from the I2S input queue
  *
- * @param left_samples Pointer to the array of left channel samples
- * @param right_samples Pointer to the array of right channel samples
- * @param sample_count Number of samples (left_samples and right_samples should have the same count)
+ * @param samples Pointer to the array of channel samples
+ * @param sample_count Number of samples
+ *  Upon calling this function, sample_count should contain the maximum number of samples that can be stored in samples[].
+ *  Upon return, sample_count will contain the actual number of samples stored in samples[].
+ * @return true if the desired number of samples were read from the queue
  */
-bool I2SAudio::getSourceSamples(int16_t left_samples[], int16_t right_samples[], size_t &sample_count_per_channel)
+bool I2SAudio::getSourceSamples(int16_t samples[], size_t &sample_count, AudioChannel channel)
 {
-    BufferSyncMessage message;
-    int16_t *samples = nullptr;
+    size_t samples_read = 0;
+    std::queue<int16_t>* queue = nullptr;
 
-    getRawSourceSamples(message.data, message.size);
-    if (message.size == 0)
+    switch(channel)
     {
-        return false;
+        case AudioChannel::LEFT:
+            queue = &m_left_samples;
+            break;
+        case AudioChannel::RIGHT:
+            queue = &m_right_samples;
+            break;
+        case AudioChannel::BOTH:
+            return false;
     }
-    samples = reinterpret_cast<int16_t *>(message.data);
-    size_t total_sample_count = message.size / sizeof(int16_t); // total number of samples for left + right channels
-    if(sample_count_per_channel < total_sample_count / 2)
-    {
-        return false;
-    }
-    sample_count_per_channel = total_sample_count / 2;
 
-    // ESP_LOGI(TAG, "Incoming total Samples: %d", total_sample_count);
-    // for (int i = 0; i < total_sample_count; i++)
-    // {
-    //     printf("%04x ", (uint16_t)samples[i]);
-    //     if (i % 32 == 31)
-    //     {
-    //         printf("\n");
-    //     }
-    // }
-    // printf("\n");
-
-    for (int i = 0; i < total_sample_count; i++)
+    while (samples_read < sample_count)
     {
-        if (i % 2 == 0)
+        if (!queue->empty())
         {
-            left_samples[i / 2] = samples[i];
+            samples[samples_read] = queue->front();
+            queue->pop();
+            samples_read++;
         }
         else
         {
-            right_samples[i / 2] = samples[i];
+            if (!fillSampleQueue())
+            {
+                break;
+            }
         }
     }
+    sample_count = samples_read;
     return true;
 }
 
@@ -216,4 +212,40 @@ void I2SAudio::getRawSourceSamples(uint8_t samples[], size_t &byte_count)
         mempcpy(samples, message.data, message.size);
         byte_count = message.size;
     }
+}
+
+bool I2SAudio::fillSampleQueue()
+{
+    const size_t MAX_QUEUE_SIZE = 256;
+    BufferSyncMessage message;
+    int16_t *samples = nullptr;
+    getRawSourceSamples(message.data, message.size);
+    if (message.size == 0)
+    {
+        return false;
+    }
+    samples = reinterpret_cast<int16_t *>(message.data);
+    size_t total_sample_count = message.size / sizeof(int16_t); // total number of samples for left + right channels
+    for (int i = 0; i < total_sample_count; i++)
+    {
+        if (i % 2 == 0)
+        {
+            // Even samples = left channel
+            if (m_left_samples.size() >= MAX_QUEUE_SIZE)
+            {
+                m_left_samples.pop(); // remove the oldest sample
+            }
+            m_left_samples.push(samples[i]);
+        }
+        else
+        {
+            // Odd samples = right channel
+            if (m_right_samples.size() >= MAX_QUEUE_SIZE)
+            {
+                m_right_samples.pop(); // remove the oldest sample
+            }
+            m_right_samples.push(samples[i]);
+        }
+    }
+    return true;
 }

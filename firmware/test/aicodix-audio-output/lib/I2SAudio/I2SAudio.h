@@ -3,6 +3,7 @@
 #include "I2SOutput.h"
 #include "I2SInput.h"
 #include "driver/i2s.h"
+#include <queue>
 
 using namespace std;
 
@@ -27,15 +28,18 @@ private:
     i2s_config_t m_i2sConfig;
     i2s_pin_config_t m_i2s_pin_config;
     const uint32_t m_sampleRate;
+    queue<int16_t> m_left_samples;
+    queue<int16_t> m_right_samples;
 
     I2SOutput *m_output = nullptr;
     xQueueHandle m_sample_sink = nullptr;
     
     I2SInput *m_input = nullptr;
     xQueueHandle m_sample_source = nullptr;
+    bool fillSampleQueue();
 
 public:
-    enum class AudioSinkChannel
+    enum class AudioChannel
     {
         LEFT, RIGHT, BOTH
     };
@@ -44,9 +48,9 @@ public:
     void init();
     void start_output(size_t maxMessages);
     void start_input(size_t maxMessages);
-    bool addSinkSamples(int16_t samples[], int count, AudioSinkChannel channel);
+    bool addSinkSamples(int16_t samples[], int count, AudioChannel channel);
     bool addRawSinkSamples(uint8_t samples[], int count);
-    bool getSourceSamples(int16_t left_samples[], int16_t right_samples[], size_t &sample_count_per_channel);
+    bool getSourceSamples(int16_t left_samples[], size_t &sample_count_per_channel, AudioChannel channel);
     void getRawSourceSamples(uint8_t samples[], size_t& count);
     void stop();
 };
