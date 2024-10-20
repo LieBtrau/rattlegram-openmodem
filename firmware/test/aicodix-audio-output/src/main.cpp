@@ -50,7 +50,7 @@ static I2SAudio *i2sAudio;
  */
 void sampleSink(int16_t samples[], int count)
 {
-    i2sAudio->addSinkSamples(samples, count, I2SAudio::AudioSinkChannel::LEFT);
+    i2sAudio->addSinkSamples(samples, count, I2SAudio::AudioChannel::LEFT);
 }
 
 void setup()
